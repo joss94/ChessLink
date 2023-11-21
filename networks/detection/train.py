@@ -30,6 +30,7 @@ class DetectNet:
 
         # get the model using our helper function
         self.model = self.get_object_detection_model(num_classes=len(self.classes))
+
         self.model.to(self.device)
         if pretrained_path != "":
             self.model.load_state_dict(torch.load(pretrained_path))
@@ -65,7 +66,7 @@ class DetectNet:
 
             # Fix aspect ratio
             ar = image.shape[0]/image.shape[1]
-            target_ar = 540/960
+            target_ar = 1.0
             offset = [0, 0, 0, 0]
             if ar < target_ar:
                 border = int(0.5 * (target_ar * image.shape[1] - image.shape[0]))
@@ -116,7 +117,7 @@ class DetectNet:
         # split the dataset in train and test set
         torch.manual_seed(1)
         indices = torch.randperm(len(dataset)).tolist()
-        test_split = 0.95
+        test_split = 0.8
         tsize = int(len(dataset)*test_split)
         subset = torch.utils.data.Subset(dataset, indices[:tsize])
         subset_test = torch.utils.data.Subset(dataset, indices[tsize:])
@@ -136,7 +137,7 @@ class DetectNet:
 
         # construct an optimizer
         params = [p for p in self.model.parameters() if p.requires_grad]
-        optimizer = torch.optim.Adam(params=params,lr=1e-4)
+        optimizer = torch.optim.Adam(params=params,lr=1e-3)
         # optimizer = torch.optim.SGD(params, lr=1e-3, momentum=0.9, weight_decay=0.0005)
 
         # and a learning rate scheduler which decreases the learning rate
@@ -144,8 +145,8 @@ class DetectNet:
                                                     step_size=10,
                                                     gamma=0.5)
         n_epochs = 1000
-        show_freq = 5
-        eval_freq = 500
+        show_freq = 20
+        eval_freq = 400
         total_batch_index = 0
 
         print("Starting training...")
@@ -175,11 +176,11 @@ class DetectNet:
                 total_loss += loss_value
                 total_items += 1
 
-                if batch_idx > 0 and batch_idx % eval_freq == 0:
+                if (batch_idx > 0 and batch_idx % eval_freq == 0) or batch_idx == len(data_loader) - 1:
                     val_loss = self.evaluate(data_loader_test)
                     print(f"(batch {total_batch_index}) Train: {total_loss / total_items:.4f}   -   Val: {val_loss:.4f}")
 
-                    model_path = os.path.join("/workspace/CL/model/detection/", "latest.torch")
+                    model_path = os.path.join("/workspace/ChessLink/model/detection/", "latest.torch")
                     torch.save(self.model.state_dict(), model_path)
 
                     if val_loss < min_val_loss:
@@ -271,8 +272,8 @@ class DetectNet:
             cv2.imwrite(f"/workspace/CL/output/{Path(img_path).stem}_detect.jpg", img.astype(np.int32))
 
     def visualize_train(self):
-        main_folder = "/workspace/CL/data"
-        train_folder = "dataset5"
+        main_folder = "/workspace/ChessLink/data"
+        train_folder = "dataset_test_CL6"
         dataset = ChessDataset(os.path.join(main_folder, train_folder))
 
         (data_, target_) = dataset[np.random.randint(0, 1e6)]
@@ -288,10 +289,10 @@ class DetectNet:
         scores=[1.0 for label in labels]
         self.draw_boxes(img, scores, boxes, labels)
 
-        cv2.imwrite("/workspace/CL/train.jpg", img)
+        cv2.imwrite("/workspace/ChessLink/train.jpg", img)
 
 if __name__ == "__main__":
-    Net = DetectNet(train=True, device="cuda:2")
-    Net.visualize_train()
+    Net = DetectNet(train=True, device="cuda:1")#, pretrained_path="/workspace/ChessLink/model/detection/latest.torch")
+    # Net.visualize_train()
     # Net.test("/workspace/CL/model/detection/5.torch", "/workspace/CL/data/test_images")
-    # Net.train("/workspace/CL/data/dataset5")
+    Net.train("/workspace/ChessLink/data/dataset_test_CL11")

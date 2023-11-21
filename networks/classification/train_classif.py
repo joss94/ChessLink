@@ -14,7 +14,8 @@ from PIL import Image
 
 
 #----------------------------------------------Transform image-------------------------------------------------------------------
-transform=tf.Compose([tf.ToPILImage(),tf.Resize((64, 64))])
+IMG_SIZE=64
+transform=tf.Compose([tf.ToPILImage(),tf.Resize((IMG_SIZE, IMG_SIZE))])
 
 def collate_fn(batch):
     """
@@ -28,7 +29,7 @@ class PieceDataset(torch.utils.data.Dataset):
     def __init__(self, data_folder):
         self.listImages = glob.glob(os.path.join(data_folder, "*.jpg")) # Create list of images
         # self.listImages = [img for img in self.listImages if "mask" not in img]
-        self.class_names = ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']
+        self.class_names = ['q', 'k']
 
     def __len__(self):
         return len(self.listImages)
@@ -36,10 +37,15 @@ class PieceDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
 
         path = self.listImages[index]
-        image = np.array(Image.open(path)).swapaxes(0,2).swapaxes(1,2)
-        # print(str(Path(path).stem))
-        piece = int(str(Path(path).stem)[0])
-        label = [int(piece == i) for i in range(12)]
+        image = cv2.imread(path)
+
+        H = image.shape[0]
+        W = image.shape[1]
+
+        image = cv2.resize(image[0:W,0:W], (IMG_SIZE, IMG_SIZE))
+        image = np.swapaxes(image, 0, 2)
+
+        label = [0, 1] if 'queen' in str(Path(path).stem) else [1, 0]
 
         return image, label
 
@@ -50,7 +56,9 @@ class ChessNet(nn.Module):
     def __init__(self, model_path="", device_id=-1, train=False):
         super(ChessNet, self).__init__()
 
-        self.class_names = ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']
+        self.img_size=(12)
+
+        self.class_names = ["q", "k"]
         self.device = torch.device(f'cuda:{device_id}') if (torch.cuda.is_available()and device_id>=0) else torch.device('cpu')
         self.network = nn.Sequential(
 
@@ -62,22 +70,14 @@ class ChessNet(nn.Module):
 
             nn.Conv2d(64, 128, kernel_size = 3, stride = 1, padding = 1),
             nn.ReLU(),
-            nn.Conv2d(128 ,128, kernel_size = 3, stride = 1, padding = 1),
-            nn.ReLU(),
             nn.MaxPool2d(2,2),
-
-            # nn.Conv2d(128, 256, kernel_size = 3, stride = 1, padding = 1),
-            # nn.ReLU(),
-            # nn.Conv2d(256,256, kernel_size = 3, stride = 1, padding = 1),
-            # nn.ReLU(),
-            # nn.MaxPool2d(2,2),
 
             nn.Flatten(),
             nn.Linear(32768,128),
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64,12)
+            nn.Linear(64,2)
         )
 
         if train:
@@ -96,16 +96,20 @@ class ChessNet(nn.Module):
     # ------------- Infer on test image ----------------------------------------------------
     def infer(self, images):
 
-        data_ = torch.Tensor([np.array(cv2.resize(img, (64,64))) for img in images]).to(self.device).swapaxes(1,3).swapaxes(2,3)
+        for i, image in enumerate(images):
+            W = image.shape[1]
+            images[i] = cv2.resize(image[0:W,0:W], (IMG_SIZE, IMG_SIZE))
+
+        data_ = torch.Tensor(np.array(images)).to(self.device).swapaxes(1,3)#.swapaxes(2,3)
         outputs = self(data_)
-        return [self.class_names[i] for i in torch.argmax(outputs, 1).cpu().detach().numpy()]
+        return [outputs.cpu().detach().numpy()]
 
 
     def train_network(self):
-        main_folder = "/workspace/CL"
-        train_folder = "data/dataset_pieces"
+        main_folder = "/workspace/ChessLink"
+        train_folder = "data/dataset_qk"
 
-        batch_size=256
+        batch_size=64
         Learning_Rate=1e-3
         n_epochs = 1000
         show_freq = 1
@@ -193,61 +197,10 @@ def visualize_train():
         )
     cv2.imwrite("/workspace/CL/train.jpg", img)
 
-# def test(modelPath, testFolder):
-#     ListImages = glob.glob(os.path.join(testFolder, "*.jpg")) # Create list of images
-#     ListImages = [img for img in ListImages if "test" not in img]
 
-#     for imgPath in ListImages:
-
-#         Img=cv2.imread(imgPath)[:,:,0:3]
-
-#         with open(imgPath.replace(".jpg",".json")) as f:
-#             Json =  json.loads(f.read())
-
-#         square_images = []
-#         square_coords = []
-#         for square in range(64):
-#             r = int(square/8)
-#             c = square % 8
-
-#             # Crop the image to the chosen square
-#             coords = np.array([
-#                 Json["board"][r*9+c],
-#                 Json["board"][r*9+c+1],
-#                 Json["board"][(r+1)*9+c],
-#                 Json["board"][(r+1)*9+c+1],
-#             ], np.float64)
-
-#             coords[:,1] = coords[:,1] * -1.0 + 1.0
-
-#             coords = (coords * [Img.shape[1], Img.shape[0]]).astype(np.int32)
-#             [X, Y, W, H] = cv2.boundingRect(coords)
-
-#             if X >= 0 and X+W < Img.shape[1] and Y >= 0 and Y+H < Img.shape[0]:
-
-#                 croppedImg = Img[Y:Y+H, X:X+W]
-#                 square_images.append(croppedImg)
-#                 square_coords.append([X, Y, W, H])
-
-#         labels = self.infer(modelPath, square_images)
-
-#         for label, square in zip(labels, square_coords):
-#             original = cv2.imread(imgPath)
-#             label = ["'black", 'white', 'empty'][label]
-#             cv2.putText(
-#                 original,
-#                 label,
-#                 org = (square[0],square[1]),
-#                 fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-#                 fontScale=.5,
-#                 color=(0,255,0)
-#                 )
-
-#             save_path = Path(testFolder) / Path(imgPath).stem + "_test.jpg"
-#             cv2.imwrite(save_path, original)
 
 if __name__ == "__main__":
     # test("/workspace/CL/model/classif/999.torch", "/workspace/CL/test_images")
-    net = ChessNet("/workspace/CL/model/classif/3.torch", 0, True)
+    net = ChessNet("", 0, True)
     net.train_network()
     # visualize_train()

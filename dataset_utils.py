@@ -5,14 +5,16 @@ import cv2
 import numpy as np
 import json
 from pathlib import Path
+import random
+
+from multiprocessing import Pool
 
 from tqdm import tqdm
 
 import uuid
 
-data_augment_directory='./dataset_augment'
-data_base_directory='./dataset3'
-output_directory = './augment_masks'
+from utils import make_square_image, crop_board
+
 
 def clean(dataset_path):
 
@@ -36,74 +38,171 @@ def merge(datasets, dataset_dst):
     image_file_paths = []
     for dataset in datasets:
         dataset_images = glob.glob(dataset + '/*.jpg',recursive=True)
-        dataset_images = [img for img in dataset_images if "mask" not in img]
+        print(len(dataset_images))
         image_file_paths.extend(dataset_images)
 
-    for i, image_path in enumerate(image_file_paths):
-        mask_path = image_path.replace(".jpg", "_mask.jpg")
-        json_path = image_path.replace(".jpg", ".json")
+    for image_path in tqdm(image_file_paths):
+        data_name = Path(image_path).stem
+        shutil.copy(image_path, os.path.join(dataset_dst, f"{data_name}.jpg"))
+        shutil.copy(image_path.replace(".jpg", ".json"), os.path.join(dataset_dst, f"{data_name}.json"))
 
-        shutil.copy(image_path, os.path.join(dataset_dst, f"data_{i}.jpg"))
-        shutil.copy(mask_path, os.path.join(dataset_dst, f"data_{i}_mask.jpg"))
-        shutil.copy(json_path, os.path.join(dataset_dst, f"data_{i}.json"))
+def merge_yolo(datasets, dst_dir):
+    os.makedirs(dst_dir, exist_ok=True)
+    os.makedirs(Path(dst_dir)/"train", exist_ok=True)
+    os.makedirs(Path(dst_dir)/"train"/"images", exist_ok=True)
+    os.makedirs(Path(dst_dir)/"train"/"labels", exist_ok=True)
 
-def gen_masks(data_directory="/workspace/CL/data/dataset5", regenerate=False):
+    image_file_paths = []
+    for dataset in datasets:
+        for image_path in tqdm(glob.glob(dataset + '/train/images/*.jpg')):
+            data_name = Path(image_path).stem
+            label_path = image_path.replace(".jpg", ".txt").replace("images", "labels")
+            dst_img_path = os.path.join(Path(dst_dir)/"train"/"images", f"{data_name}.jpg")
+            dst_label_path = os.path.join(Path(dst_dir)/"train"/"labels", f"{data_name}.txt")
+            if not Path(dst_img_path.exists())
+                shutil.copy(image_path, dst_img_path)
+                shutil.copy(label_path, dst_label_path)
 
-    path=data_directory + '/*.jpg'
-    image_file_paths=glob.glob(path,recursive=True)
-    image_file_paths = [img for img in image_file_paths if "mask" not in img]
+    with open(Path(dst_dir) / "data.yaml", 'w+') as f:
+        f.write("train: ../train/images\n")
+        f.write("val: ../../chessred_test_yolo/images\n")
+        f.write("test: ../../chessred_test_yolo/images\n")
+        f.write(f"nc: 12\n")
+        f.write(f"names: ['p', 'n', 'b', 'r', 'q', 'k', 'p', 'n', 'b', 'r', 'q', 'k']\n")
 
-    for i, path in enumerate(image_file_paths):
-        mask_path = path.replace('.jpg', '_mask.jpg')
+        f.write(f"augment: True\n")
 
-        if not regenerate and os.path.exists(mask_path):
+def visualize_annots(img_path):
+
+    img = cv2.imread(img_path)
+    H = img.shape[0]
+    W = img.shape[1]
+
+
+    with open(img_path.replace(".jpg",".json")) as f:
+        annots = json.loads(f.read())
+
+    for piece in annots["pieces"]:
+        box = np.array(piece["bbox"])
+        label=piece["piece"]
+        cv2.rectangle(img,
+            (int(box[0]* W), int(box[1] * H)),
+            (int(box[2]* W), int(box[3] * H)),
+            (255,255,255),
+            max(1, int(img.shape[0] / 500))
+        )
+        cv2.putText(
+            img,
+            # f'{pieces[i]["score"]:.2f}',
+            label,
+            org = (int(box[0] * W), int(box[1] * H)),
+            fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+            fontScale=0.4 * img.shape[0] / 500,
+            color=(0,255,0),
+            thickness=max(1, int(img.shape[0] / 500))
+        )
+    cv2.imwrite("/workspace/ChessLink/visu.jpg", img)
+
+def visualize_annots_yolo(dataset_path):
+
+    files = glob.glob(f"{dataset_path}/*/*/*.jpg")
+    img_path = Path(files[0])
+
+    annots_path = img_path.parent.parent / "labels" / (str(img_path.stem) + ".txt")
+
+    img = cv2.imread(str(img_path))
+
+    H = img.shape[0]
+    W = img.shape[1]
+
+    with open(annots_path) as f:
+        annots = f.readlines()
+
+    for piece in annots:
+        elems = piece.split(" ")
+        label = elems[0]
+        c_x = float(elems[1])
+        c_y = float(elems[2])
+        w = float(elems[3])
+        h = float(elems[4])
+
+        cv2.rectangle(img,
+            (int((c_x - 0.5 * w) * W), int((c_y - 0.5 * h) * H)),
+            (int((c_x + 0.5 * w) * W), int((c_y + 0.5 * h) * H)),
+            (255,255,255),
+            max(1, int(img.shape[0] / 500))
+        )
+        cv2.putText(
+            img,
+            # f'{pieces[i]["score"]:.2f}',
+            label,
+            org = (int(c_x * W), int(c_y * H)),
+            fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+            fontScale=0.4 * img.shape[0] / 500,
+            color=(0,255,0),
+            thickness=max(1, int(img.shape[0] / 500))
+        )
+    cv2.imwrite("/workspace/ChessLink/visu.jpg", img)
+
+
+def gen_yolo_annot(path, dst_dir, train_split, val_split, class_names):
+
+    # print(f"Processing {Path(path).stem}")
+    rand = np.random.uniform(0, 1)
+
+    annots_path = Path(dst_dir) / "train" / "labels" / (str(Path(path).stem) + ".txt")
+    img_path = Path(dst_dir) / "train" / "images" / (str(Path(path).stem) + ".jpg")
+
+    img = cv2.imread(path)
+    h, w, _ = img.shape
+
+    with open(path.replace(".jpg",".json")) as f:
+        annots = json.loads(f.read())
+
+    board_poly = np.array(annots["board"])
+    board_poly[:,0] *= w
+    board_poly[:,1] *= -1
+    board_poly[:,1] += 1
+    board_poly[:,1] *= h
+    board_poly = np.int32(board_poly)
+
+    img_cropped, [X, Y, W, H] = crop_board(img, board_poly)
+
+    annots_txt = ""
+
+    for piece in annots["pieces"]:
+        box = piece["bbox"]
+        box = np.clip(box, 0.0, 1.0)
+
+        box[0] = (box[0] * w - X) / W
+        box[2] = (box[2] * w - X) / W
+        box[1] = (box[1] * h - Y) / H
+        box[3] = (box[3] * h - Y) / H
+
+        if box[0]>=1.0 or box[2]<=0 or box[1]>=1.00 or box[3]<=0:
             continue
 
-        image = cv2.imread(path)
-        if os.path.exists(path.replace(".jpg",".json")):
-            with open(path.replace(".jpg",".json")) as f:
-                annots =  json.loads(f.read())
-            width = image.shape[1]
-            height = image.shape[0]
+        p_class = class_names.index(piece["piece"])
+        center_x = 0.5 * (box[0] + box[2])
+        center_y = 0.5 * (box[1] + box[3])
+        width = abs(box[2] - box[0])
+        height = abs(box[1] - box[3])
+        annots_txt += f'{p_class} {center_x} {center_y} {width} {height}\n'
 
-            mask=np.zeros((height, width, 1), np.uint8)
-            corners = annots["board"]
-            poly = np.array([corners[0], corners[72], corners[80], corners[8]])
-            poly[:,0] *= width
-            poly[:,1] = (1.0 - poly[:,1]) * height
-            poly = poly.astype(np.int32)
+    # shutil.copyfile(path, str(img_path))
+    cv2.imwrite(str(img_path), img_cropped)
 
-            borders = [
-                -min(np.min(poly[:,0]), 0),
-                max(np.max(poly[:,0]), width) - width,
-                -min(np.min(poly[:,1]), 0),
-                max(np.max(poly[:,1]), height) - height
-                ]
+    with open(annots_path, 'w+') as f:
+        f.write(annots_txt)
 
-            mask = cv2.copyMakeBorder(mask, borders[2], borders[3], borders[0], borders[1], borderType=cv2.BORDER_CONSTANT, value = (0,0,0))
-            poly[:,0] += borders[0]
-            poly[:,1] += borders[2]
+    return 0
 
-            cv2.fillPoly(mask, pts = [poly], color=(255, 255,255))
-            mask = mask[borders[1]:borders[1] + height, borders[0]:borders[0] + width]
-
-            print(f"Saving mask at {path.replace('.jpg', '_mask.jpg')} ({i}/{len(image_file_paths)})")
-            cv2.imwrite(path.replace(".jpg", "_mask.jpg"), mask)
-
-
-
-def gen_yolo_annots(data_directory="/workspace/CL/data/dataset5", dst_dir="/workspace/CL/data/dataset_yolo_3"):
+def gen_yolo_annots(data_directory="/workspace/ChessLink/data/dataset_test_CL18", dst_dir="/workspace/ChessLink/data/dataset_yolo_18"):
 
     os.makedirs(dst_dir, exist_ok=True)
     os.makedirs(Path(dst_dir)/"train", exist_ok=True)
     os.makedirs(Path(dst_dir)/"train"/"images", exist_ok=True)
     os.makedirs(Path(dst_dir)/"train"/"labels", exist_ok=True)
-    os.makedirs(Path(dst_dir)/"valid", exist_ok=True)
-    os.makedirs(Path(dst_dir)/"valid"/"images", exist_ok=True)
-    os.makedirs(Path(dst_dir)/"valid"/"labels", exist_ok=True)
-    os.makedirs(Path(dst_dir)/"test", exist_ok=True)
-    os.makedirs(Path(dst_dir)/"test"/"images", exist_ok=True)
-    os.makedirs(Path(dst_dir)/"test"/"labels", exist_ok=True)
 
     path=data_directory + '/*.jpg'
     image_file_paths=glob.glob(path,recursive=True)
@@ -115,97 +214,74 @@ def gen_yolo_annots(data_directory="/workspace/CL/data/dataset5", dst_dir="/work
 
     class_names = ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']
 
-    for path in tqdm(image_file_paths):
+    params = [
+        (
+            image_file_paths[i],
+            dst_dir,
+            train_split,
+            val_split,
+            class_names,
+        )
+        for i in range(len(image_file_paths))
+    ]
 
-        rand = np.random.uniform(0, 1)
+    for p in tqdm(params):
+        gen_yolo_annot(*p)
+    # with Pool(4) as p:
+    #     print("Starting...")
+    #     # p.starmap(gen_yolo_annot, params)
+    #     for _ in tqdm(p.starmap(gen_yolo_annot, params)):
+    #         pass
+
+    # for path in tqdm(image_file_paths):
+
+    with open(Path(dst_dir) / "data.yaml", 'w+') as f:
+        f.write("train: ../train/images\n")
+        f.write("val: ../../chessred_test_yolo/images\n")
+        f.write("test: ../../chessred_test_yolo/images\n")
+        f.write(f"nc: {len(class_names)}\n")
+        f.write(f"names: ['p', 'n', 'b', 'r', 'q', 'k', 'p', 'n', 'b', 'r', 'q', 'k']\n")
+
+        f.write(f"augment: True\n")
+        # f.write(f"mosaic: 0.0\n")
+
+def extract_kings_queens(data_directory="/workspace/ChessLink/data/dataset_test_CL5", dst_dir="/workspace/ChessLink/data/dataset_qk"):
+
+    os.makedirs(dst_dir, exist_ok=True)
+
+    path=data_directory + '/*.jpg'
+    image_file_paths=glob.glob(path,recursive=True)
+
+    i=0
+    for path in tqdm(image_file_paths):
 
         with open(path.replace(".jpg",".json")) as f:
             annots = json.loads(f.read())
 
         image = cv2.imread(path)
 
-        if rand < train_split:
-            annots_path = Path(dst_dir) / "train" / "labels" / (str(Path(path).stem) + ".txt")
-            img_path = Path(dst_dir) / "train" / "images" / (str(Path(path).stem) + ".jpg")
-        elif rand < train_split + val_split:
-            annots_path = Path(dst_dir) / "valid" / "labels" / (str(Path(path).stem) + ".txt")
-            img_path = Path(dst_dir) / "valid" / "images" / (str(Path(path).stem) + ".jpg")
-        else:
-            annots_path = Path(dst_dir) / "test" / "labels" / (str(Path(path).stem) + ".txt")
-            img_path = Path(dst_dir) / "test" / "images" / (str(Path(path).stem) + ".jpg")
-
-        annots_txt = ""
-
-        board_poly = np.array([
-            annots["board"][0],
-            annots["board"][8],
-            annots["board"][80],
-            annots["board"][72],
-        ])
-        board_poly[:,0] = board_poly[:,0] * image.shape[1]
-        board_poly[:,1] = (1.0 - board_poly[:,1]) * image.shape[0]
-
-        [X, Y, W, H] = cv2.boundingRect(np.int32(board_poly))
-        X = max(0, X)
-        Y = max(0, Y)
-        W = min(W, image.shape[1] - X - 1)
-        H = min(H, image.shape[0] - Y - 1)
-        target_ar = 540/960
-        ar = H/W
-        if ar < target_ar-0.01:
-            dh = target_ar * W - H
-            H += dh
-            Y -= 0.5 * dh
-        elif ar > target_ar+0.01:
-            dw = H / target_ar - W
-            W += dw
-            X -= 0.5 * dw
-
-        X = max(0, X)
-        Y = max(0, Y)
-        W = min(W, image.shape[1] - X - 1)
-        H = min(H, image.shape[0] - Y - 1)
+        H = image.shape[0]
+        W = image.shape[1]
 
         for piece in annots["pieces"]:
             box = piece["bbox"]
-            box = np.array([box[0], 1.0-box[3], box[2], 1.0-box[1]])
-
-            box[0] = (box[0] * image.shape[1] - X) / W
-            box[2] = (box[2] * image.shape[1] - X) / W
-            box[1] = (box[1] * image.shape[0] - Y) / H
-            box[3] = (box[3] * image.shape[0] - Y) / H
-
             box = np.clip(box, 0.0, 1.0)
 
-            if box[0]>=1.0 or box[2]<=0 or box[1]>=1.00 or box[3]<=0:
+            if box[0]>=W or box[2]<=0 or box[1]>=H or box[3]<=0:
                 continue
 
-            p_class = class_names.index(piece["piece"])
-            center_x = 0.5 * (box[0] + box[2])
-            center_y = 0.5 * (box[1] + box[3])
-            width = abs(box[2] - box[0])
-            height = abs(box[1] - box[3])
-            annots_txt += f'{p_class} {center_x} {center_y} {width} {height}\n'
+            if piece["piece"].lower() not in ["q", "k"]:
+                continue
 
-        image_cropped = image[int(Y):int(Y+H),int(X):int(X+W)]
+            # print(box)
+            piece_img = image[box[1]:box[3], box[0]:box[2]]
 
-        cv2.imwrite(str(img_path), cv2.resize(image_cropped, (640, 640)))
-        with open(annots_path, 'w+') as f:
-            f.write(annots_txt)
+            name = f'queen_{i}.jpg' if piece["piece"].lower() == "q" else f'king_{i}.jpg'
 
-        with open(Path(dst_dir) / "data.yaml", 'w+') as f:
-            f.write("train: ../train/images\n")
-            f.write("val: ../valid/images\n")
-            f.write("test: ../test/images\n")
-            f.write(f"nc: {len(class_names)}\n")
-            f.write(f"names: ['black_pawn', 'black_knight', 'black_bishop', 'black_rook', \
-                    'black_queen', 'black_king', 'white_pawn', 'white_knight', 'white_bishop', \
-                    'white_rook', 'white_queen', 'white_king']\n")
+            cv2.imwrite(str(Path(dst_dir) / name), piece_img)
+            i+=1
 
-            f.write(f"augment: True\n")
-            # f.write(f"mosaic: 0.0\n")
-
-def gen_yolo_annots_seg(data_directory="/workspace/CL/data/dataset5", dst_dir="/workspace/CL/data/dataset_yolo_seg_2"):
+def gen_yolo_annots_seg(data_directory="/workspace/ChessLink/data/dataset_test_CL15", dst_dir="/workspace/ChessLink/data/dataset_yolo_seg_3"):
 
     os.makedirs(dst_dir, exist_ok=True)
     os.makedirs(Path(dst_dir)/"train", exist_ok=True)
@@ -258,7 +334,7 @@ def gen_yolo_annots_seg(data_directory="/workspace/CL/data/dataset5", dst_dir="/
                 annot += f" {corner[0]} {1.0-corner[1]}"
             f.write(f'{annot}\n')
 
-        cv2.imwrite(str(img_path), cv2.resize(cv2.imread(path), (480, 480)))
+        cv2.imwrite(str(img_path), cv2.resize(cv2.imread(path), (640, 640)))
 
         with open(Path(dst_dir) / "data.yaml", 'w+') as f:
             f.write("train: ../train/images\n")
@@ -268,36 +344,65 @@ def gen_yolo_annots_seg(data_directory="/workspace/CL/data/dataset5", dst_dir="/
             f.write(f"names: ['board']\n")
             f.write(f"augment: True\n")
 
+def chessred_2_yolo(src_dir="/workspace/ChessLink/data/chessred_test", dst_dir="/workspace/ChessLink/data/chessred_test_yolo"):
 
-def split(data_directory="/workspace/CL/data/dataset3", split = 0.8):
-    path=data_directory + '/*.jpg'
+    class_indices = [6, 9, 7, 8, 10, 11, 0, 3, 1, 2, 4, 5, 12]
+
+    os.makedirs(dst_dir, exist_ok=True)
+    os.makedirs(Path(dst_dir)/"images", exist_ok=True)
+    os.makedirs(Path(dst_dir)/"labels", exist_ok=True)
+
+    path=src_dir + '/*/*.jpg'
     image_file_paths=glob.glob(path,recursive=True)
-    image_file_paths = [img + "\n" for img in image_file_paths if "mask" not in img]
 
-    split_idx = int(split * len(image_file_paths))
-
-    with open(os.path.join(data_directory, "train.txt"), 'w+') as f:
-        f.writelines(image_file_paths[:split_idx])
-    with open(os.path.join(data_directory, "val.txt"), 'w+') as f:
-        f.writelines(image_file_paths[split_idx:])
-
-
-def prepare_dataset(src_dir="/workspace/CL/data/dataset3", dst_dir="", target_size=(256, 256)):
-    if not os.path.exists(dst_dir):
-        os.makedirs(dst_dir, exist_ok=True)
-
-    path=src_dir + '/*.jpg'
-    image_file_paths=glob.glob(path,recursive=True)
-    image_file_paths = [img for img in image_file_paths if "mask" not in img]
+    with open("./data/chessred_test/annotations.json") as f:
+        annots = json.load(f)
 
     for path in tqdm(image_file_paths):
-        image=cv2.imread(path)[:,:,0:3]
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = cv2.resize(image, target_size)
-        dst_path = str(Path(dst_dir) / Path(path).name)
-        cv2.imwrite(dst_path, image)
 
-        shutil.copy(path.replace(".jpg", ".json"), dst_path.replace(".jpg", ".json"))
+        annots_path = Path(dst_dir) / "labels" / (str(Path(path).stem) + ".txt")
+        img_path = Path(dst_dir) / "images" / (str(Path(path).stem) + ".jpg")
+
+        annot = next(a for a in annots["images"] if a["file_name"] == Path(path).name)
+        img_id = annot['id']
+        corners_annot = next(c for c in annots["annotations"]["corners"] if c["image_id"] == img_id)
+        corners = np.int32([
+            corners_annot["corners"]["top_left"],
+            corners_annot["corners"]["top_right"],
+            corners_annot["corners"]["bottom_left"],
+            corners_annot["corners"]["bottom_right"]
+            ])
+
+        img = cv2.imread(path)
+        h, w, _ = img.shape
+
+        img_cropped, [X, Y, W, H] = crop_board(img, corners)
+
+        pieces = [p for p in annots["annotations"]["pieces"] if p["image_id"] == img_id]
+
+        annots_txt = ""
+
+        for piece in pieces:
+            box = piece["bbox"]
+
+            box[0] = (box[0] - X) / W
+            box[2] /= W
+            box[1] = (box[1] - Y) / H
+            box[3] /= H
+
+            p_class = class_indices[piece["category_id"]]
+            center_x = box[0] + 0.5 * box[2]
+            center_y = box[1] + 0.5 * box[3]
+            width = box[2]
+            height = box[3]
+            annots_txt += f'{p_class} {center_x} {center_y} {width} {height}\n'
+
+        # shutil.copyfile(path, str(img_path))
+        cv2.imwrite(str(img_path), img_cropped)
+
+        with open(annots_path, 'w+') as f:
+            f.write(annots_txt)
+
 
 
 def gen_pieces_dataset(src_dir="/workspace/CL/data/dataset5", dst_dir="/workspace/CL/data/dataset_pieces", target_size=(64, 64)):
@@ -347,10 +452,28 @@ def gen_pieces_dataset(src_dir="/workspace/CL/data/dataset5", dst_dir="/workspac
             cv2.imwrite(str(Path(dst_dir) / filename), croppedImg)
             # label = self.class_names.index(piece["piece"])
 
-# merge(["/workspace/CL/dataset_augment", "/workspace/CL/dataset3"], "/workspace/CL/dataset_merge")
+# merge([
+#         "/workspace/ChessLink/data/dataset_test_CL15",
+#         "/workspace/ChessLink/data/dataset_test_CL16",
+#         "/workspace/ChessLink/data/dataset_test_CL17",
+#         "/workspace/ChessLink/data/dataset_test_CL18",],
+#     "/workspace/ChessLink/data/dataset_test_CL_merge")
+
+# merge_yolo([
+#         "/workspace/ChessLink/data/dataset_yolo_14",
+#         "/workspace/ChessLink/data/dataset_yolo_16",
+#         "/workspace/ChessLink/data/dataset_yolo_17",
+#         "/workspace/ChessLink/data/dataset_yolo_18",],
+#     "/workspace/ChessLink/data/dataset_yolo_merge2")
+
 # gen_yolo_annots_seg()
-# gen_yolo_annots()
+gen_yolo_annots()
 # split()
 # prepare_dataset("/workspace/CL/data/dataset5", "/workspace/CL/data/dataset5_preprocessed")
-# gen_masks()
-gen_pieces_dataset()
+# gen_pieces_dataset()
+# extract_kings_queens()
+# chessred_2_yolo()
+
+# files = glob.glob("/workspace/ChessLink/data/dataset_test_CL16/*.jpg")
+# visualize_annots(random.choice(files))
+# visualize_annots_yolo("/workspace/ChessLink/data/dataset_yolo_16")

@@ -1,8 +1,15 @@
 import cv2
+import glob
+import json
+import utils
 
-image_path = "/workspace/CL/data/test_images/1000011472.jpg"
-
+files = glob.glob("/workspace/ChessLink/data/dataset_test_CL10/*.jpg")
+image_path = files[1]
 image = cv2.imread(image_path)
-image = cv2.convertScaleAbs(image, 5, 1.5)
 
-cv2.imwrite("/workspace/CL/sandbox.jpg", image)
+with open(image_path.replace(".jpg",".json")) as f:
+     annots = json.loads(f.read())
+
+aligned = utils.align_image(image, annots["board"])
+
+cv2.imwrite("./aligned.jpg", aligned)
