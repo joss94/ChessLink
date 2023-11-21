@@ -167,10 +167,14 @@ output/
 data/
 
 #Yolo weights
-yolov8n-seg.pt
 yolov8n.pt
 yolov8s.pt
 yolov8m.pt
+yolov8l.pt
+yolov8n-seg.pt
+yolov8s-seg.pt
+yolov8m-seg.pt
+yolov8l-seg.pt
 
 #Trainings
 runs/
