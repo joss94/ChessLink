@@ -1,15 +1,10 @@
 """Contains the class for the primitive that hanges the HDRI background in the scene"""
 
 import bpy
-import os
-from bpy_extras.object_utils import world_to_camera_view
-from pathlib import Path
 
-import chess.pgn
 import random
-import json
 import numpy as np
-from mathutils import Matrix
+from orb.primitives.delete_data_primitive import DeleteDataPrimitive
 
 import typing
 
@@ -29,29 +24,7 @@ class CreateChessBoard(BasicPrimitive):
 
         return True
 
-    def get_object_bouding_box(self, obj):
-
-        left = None
-        bottom = None
-        right = None
-        top = None
-
-        for vec_co in [v.co for v in obj.data.vertices]:
-            world_co = obj.matrix_world @ vec_co
-            image_co = world_to_camera_view(bpy.context.scene, bpy.data.objects['Camera'], world_co)
-
-            if left is None or image_co.x < left:
-                left = image_co.x
-            if bottom is None or image_co.y < bottom:
-                bottom = image_co.y
-            if right is None or image_co.x > right:
-                right = image_co.x
-            if top is None or image_co.y > top:
-                top = image_co.y
-
-        return [left, bottom, right, top]
-
-    def create_piece(self, piece_tag, collection, white_mat, black_mat):
+    def create_piece(self, piece_tag, collection):
         object_name = None
         if piece_tag.lower() == 'p':
             object_name = "Pawn"
@@ -72,46 +45,66 @@ class CreateChessBoard(BasicPrimitive):
             # Add piece
             piece_obj = bpy.data.objects[object_name].copy()
             piece_obj.data = bpy.data.objects[object_name].data.copy()
+            piece_obj.hide_render=False
             collection.objects.link(piece_obj)
 
             # Set piece material
-            mat = white_mat if(piece_tag.isupper()) else black_mat
-            if piece_obj.data.materials:
-                piece_obj.data.materials.clear()
-            piece_obj.data.materials.append(mat)
+            piece_obj.color = [1, 1, 1, 1] if(piece_tag.isupper()) else [0, 0, 0, 1]
+            piece_obj.scale = np.ones(3) * 1.0
 
         return piece_obj
 
+    def randomize_piece(self, piece):
+        for mod in piece.modifiers:
+            if mod.type == 'NODES':
+                for input in [s for s in mod.node_group.interface.items_tree if s.in_out == 'INPUT']:
+                    if input.socket_type in ['NodeSocketFloat', 'NodeSocketInt']:
+                        min = input.min_value
+                        max = input.max_value
+                        if input.socket_type == 'NodeSocketFloat':
+                            value = np.random.random() * (max-min) + min
+                        else:
+                            value = np.random.randint(min, max)
+                        mod[input.identifier] = value
+        piece.modifiers.update()
+
+        if piece.data and piece.data.shape_keys:
+            for kb in piece.data.shape_keys.key_blocks:
+                min = kb.slider_min
+                max = kb.slider_max
+                value = np.random.random() * (max-min) + min
+                kb.value = value
+
+        for obj in piece.children_recursive:
+            self.randomize_piece(obj)
+
+        piece.update_tag()
+
     # pylint: disable = W0221, W0511
-    def execute(self, chessboardFile: str, pgnFile: str, piecesFile: str, outputPath: str) -> typing.Tuple[str, bpy.types.Collection]:
+    def execute(self, chessboardFile: str) -> typing.Tuple[bpy.types.Collection, str]:
         """Extract head of a human
         """
-
         print("Chessboard: ", chessboardFile)
-        print("Pieces: ", piecesFile)
 
-        dir = Path(outputPath).parent
-        if not dir.exists():
-            os.makedirs(dir, exist_ok=True)
+        #Randomize pieces
+        self.randomize_piece(bpy.data.objects["Chessboard"])
 
-        annot = {}
+        #Rnadomize material
+        bpy.data.materials["Pieces"].node_tree.nodes["black"].inputs[0].default_value = np.random.uniform(0.03, 0.1)
+        bpy.data.materials["Pieces"].node_tree.nodes["black"].inputs[1].default_value = np.random.uniform(0.5, 1.0)
+        bpy.data.materials["Pieces"].node_tree.nodes["black"].inputs[2].default_value = np.random.uniform(0.0, 0.2)
 
-        # Read chess game and go to a random position
-        with open(pgnFile) as f:
-            game = chess.pgn.read_game(f)
+        bpy.data.materials["Pieces"].node_tree.nodes["white"].inputs[0].default_value = np.random.uniform(0.03, 0.1)
+        bpy.data.materials["Pieces"].node_tree.nodes["white"].inputs[1].default_value = np.random.uniform(0.0, 1.0)
+        bpy.data.materials["Pieces"].node_tree.nodes["white"].inputs[2].default_value = np.random.uniform(0.3, 1.0)
 
-        with open(pgnFile) as f:
-            n_moves = f.read().count('.')
+        bpy.data.materials["Pieces"].node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value = np.random.rand()
 
-        for i in range (0, random.randint(0, n_moves)):
-            game = game.next()
-
-        board = game.board()
-        print(board)
-        annot['position'] = str(board).replace('\n', '').replace(" ", "")
-        print(annot['position'])
+        board_size = 0.45
 
         # Create a new collection to import objects
+        if "ChessSet" in bpy.data.collections:
+            DeleteDataPrimitive().execute(bpy.data.collections["ChessSet"])
         collection = bpy.data.collections.new("ChessSet")
         bpy.context.scene.collection.children.link(collection)
 
@@ -121,96 +114,40 @@ class CreateChessBoard(BasicPrimitive):
         for obj in data_to.objects:
             collection.objects.link(obj)
 
-        #Import the necessary pieces only once:
-        tmp_collection = bpy.data.collections.new("Pieces_tmp")
-        bpy.context.scene.collection.children.link(tmp_collection)
-        with bpy.data.libraries.load(piecesFile) as (data_from, data_to):
-            data_to.objects = data_from.objects
-        for obj in data_to.objects:
-            tmp_collection.objects.link(obj)
+        board_obj = data_to.objects[0]
+        board_obj.scale *= board_size/8
+        board_obj.location.z = 0
+        board_obj["CL_piece"] = "board"
 
-        # Select black and white materials
-        white_mat = random.choice([mat for mat in bpy.data.materials if 'White' in mat.name])
-        black_mat = random.choice([mat for mat in bpy.data.materials if 'Black' in mat.name])
+        occupied_squares=[]
+        for piece in ["p", "n", "b", "r", "q", "k", "P", "N", "B", "R", "Q", "K"]:
+            for i in range(random.randint(0, 4)):
+                square = random.randint(0, 64)
+                while square in occupied_squares:
+                    square = random.randint(0, 64)
 
-        # Place all final pieces by duplicating temporary imports
-        annot['pieces'] = []
-        for square, piece in enumerate(annot['position']):
+                occupied_squares.append(square)
 
-            rank = 7 - int(square / 8)
-            file = square % 8
+                rank = 7 - int(square / 8)
+                file = square % 8
 
-            piece_obj = self.create_piece(piece, collection, white_mat, black_mat)
-            if piece_obj:
-
-                # Move piece
-                piece_obj.rotation_euler.rotate_axis("Z", random.uniform(0.0, 6.32))
-                piece_obj.location = (0.5 + file + random.uniform(-0.2, 0.2), rank + 0.5 + random.uniform(-0.2, 0.2), 0)
-
-                # Add piece info
-                bpy.context.view_layer.update()
-                info = {}
-                info['piece'] = piece
-                info['bbox'] = self.get_object_bouding_box(piece_obj)
-                annot['pieces'].append(info)
-
-
-        # Place random pieces next to the board
-        use_side_pieces = random.random() > 0.5
-        if use_side_pieces or True:
-            n_pieces = int(random.random() * 15)
-            print(f"Adding {n_pieces} side pieces")
-            for i in range(n_pieces):
-                piece = random.choice(["p", "n", "b", "r", "q"]) # The king is always on the board
-                if random.random() > 0.5:
-                    piece = piece.upper()
-
-                piece_obj = self.create_piece(piece, collection, white_mat, black_mat)
+                piece_obj = self.create_piece(piece, collection)
                 if piece_obj:
 
-                    # Move piece outside the board
-                    piece_obj.rotation_euler.rotate_axis("Z", random.uniform(0.0, 6.32))
-                    piece_obj.location = (9.0 + random.uniform(-1.0, 1.0), random.uniform(-2.0, 10.0), 0)
+                    piece_obj["CL_piece"] = piece
+                    piece_obj.parent = None
 
-                    # Put it on a random side
-                    if random.random() > 0.5:
-                        piece_obj.location[0] = -piece_obj.location[0] + 8.0
-                    if random.random() > 0.5:
-                        tmp = piece_obj.location[0]
-                        piece_obj.location[0] = piece_obj.location[1]
-                        piece_obj.location[1] = tmp
+                    # Move piece
+                    piece_obj.rotation_euler.rotate_axis("Z", random.uniform(0.0, 6.32))
+                    piece_obj.location = np.array([0.5 + file + random.uniform(-0.2, 0.2), rank + 0.5 + random.uniform(-0.2, 0.2), 0]) * board_size/8
 
                     # Add piece info
                     bpy.context.view_layer.update()
-                    info = {}
-                    info['piece'] = piece
-                    info['bbox'] = self.get_object_bouding_box(piece_obj)
-                    annot['pieces'].append(info)
-
-
-        # Delete tmp collection
-        for obj in tmp_collection.objects:
-            bpy.data.objects.remove(obj, do_unlink=True)
-        bpy.data.collections.remove(tmp_collection)
-        bpy.data.orphans_purge(do_recursive=True)
 
         bpy.context.view_layer.update()
 
-        # Get board 2D projection
-        annot['board'] = []
-        grid_obj = bpy.data.objects['Grid']
-        for vert in grid_obj.data.vertices:
-            world_co = grid_obj.matrix_world @ vert.co
-            image_co = world_to_camera_view(bpy.context.scene, bpy.data.objects['Camera'], world_co)
-            annot['board'].append(list(image_co.to_2d()))
-
-        # Save annotations
-
-        with open(outputPath + '.json', 'w+') as o:
-            o.write(str(json.dumps(annot, indent = 4)))
-
-        return (str(board), collection)
+        return collection, collection.name
 
 
     def get_output_names(self):
-        return ["Board position", "Collection"]
+        return ["Collection", "Collection name"]
