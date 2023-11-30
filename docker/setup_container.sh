@@ -3,7 +3,7 @@
 # to install Conda environment and Pre-commit.
 # It needs to access to volumes mounted in Docker container.
 
-REPO_PATH="/workspace/CL"
+REPO_PATH="/workspace/ChessLink"
 CONDA_ENV_NAME="jma_test"
 CONDA_PKGS_CACHE="/workspace/.conda_cache"
 

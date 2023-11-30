@@ -1,3 +1,4 @@
+import os
 import cv2
 import numpy as np
 
@@ -18,12 +19,15 @@ import math
 from chessboard_parser import ChessboardParser
 from utils import draw_results_on_image
 
+DEVICE=1
 USE_YOLO=True
 # USE_YOLO=False
 
-VIDEO_PATH = "/workspace/CL/data/test_images/carlsen.mp4"
-# VIDEO_PATH = "/workspace/CL/data/test_images/nakamura.mp4"
-VIDEO_PATH = "/workspace/CL/data/test_images/caruana.mp4"
+VIDEO_PATH = "/workspace/ChessLink/data/test_images/carlsen.mp4"
+VIDEO_PATH = "/workspace/ChessLink/data/test_images/carlsen_2.mp4"
+# VIDEO_PATH = "/workspace/ChessLink/data/test_images/nakamura.mp4"
+VIDEO_PATH = "/workspace/ChessLink/data/test_images/caruana.mp4"
+# VIDEO_PATH = "/workspace/ChessLink/data/test_images/caruana_1080p.mp4"
 
 class VideoParser():
 
@@ -33,7 +37,7 @@ class VideoParser():
         self.verbose = verbose
 
         self.buffer = []
-        self.buff_size = 30
+        self.buff_size = 1
         self.writer = None
         self.process_freq = 5
         self.save_individuals = True
@@ -90,6 +94,8 @@ class VideoParser():
             draw_results_on_image(image, r)
 
             if self.save_individuals:
+                if not os.path.exists("output"):
+                    os.makedirs("output", exist_ok=True)
                 cv2.imwrite(f"output/{frame_idx}.jpg", image)
             else:
                 if not writer:
@@ -105,9 +111,8 @@ class VideoParser():
         cap = cv2.VideoCapture(video_path)
         ret, frame = cap.read()
 
-        # frame_idx = 2500
         start_idx = 2500
-        end_index = start_idx + 2000
+        end_index = start_idx + 20000
 
         frame_idx = start_idx
         while(ret):
@@ -151,6 +156,6 @@ if __name__ == "__main__":
     with(open("/workspace/CL/data/gt.json"))as f:
         gt = json.loads(f.read())["positions"]
 
-    parser = VideoParser(device=3, yolo_detect=USE_YOLO)
+    parser = VideoParser(device=DEVICE, yolo_detect=USE_YOLO)
     parser.process_video(VIDEO_PATH)
     # parser.process_single_image("/workspace/ChessLink/data/gamestate_test/0175.png")

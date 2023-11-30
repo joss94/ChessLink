@@ -15,6 +15,9 @@ import uuid
 
 from utils import make_square_image, crop_board
 
+import io
+import imageio.v2 as imageio
+
 
 def clean(dataset_path):
 
@@ -59,7 +62,7 @@ def merge_yolo(datasets, dst_dir):
             label_path = image_path.replace(".jpg", ".txt").replace("images", "labels")
             dst_img_path = os.path.join(Path(dst_dir)/"train"/"images", f"{data_name}.jpg")
             dst_label_path = os.path.join(Path(dst_dir)/"train"/"labels", f"{data_name}.txt")
-            if not Path(dst_img_path.exists())
+            if not Path(dst_img_path.exists()):
                 shutil.copy(image_path, dst_img_path)
                 shutil.copy(label_path, dst_label_path)
 
@@ -106,7 +109,7 @@ def visualize_annots(img_path):
 def visualize_annots_yolo(dataset_path):
 
     files = glob.glob(f"{dataset_path}/*/*/*.jpg")
-    img_path = Path(files[0])
+    img_path = Path(np.random.choice(files))
 
     annots_path = img_path.parent.parent / "labels" / (str(img_path.stem) + ".txt")
 
@@ -145,13 +148,14 @@ def visualize_annots_yolo(dataset_path):
     cv2.imwrite("/workspace/ChessLink/visu.jpg", img)
 
 
-def gen_yolo_annot(path, dst_dir, train_split, val_split, class_names):
-
-    # print(f"Processing {Path(path).stem}")
-    rand = np.random.uniform(0, 1)
+def gen_yolo_annot(path, dst_dir, train_split, val_split, class_names, diff_color, overwrite):
 
     annots_path = Path(dst_dir) / "train" / "labels" / (str(Path(path).stem) + ".txt")
     img_path = Path(dst_dir) / "train" / "images" / (str(Path(path).stem) + ".jpg")
+
+    # Image was already parsed, don't do it again
+    if not overwrite and (img_path.exists() and annots_path.exists()):
+        return 0
 
     img = cv2.imread(path)
     h, w, _ = img.shape
@@ -172,17 +176,21 @@ def gen_yolo_annot(path, dst_dir, train_split, val_split, class_names):
 
     for piece in annots["pieces"]:
         box = piece["bbox"]
-        box = np.clip(box, 0.0, 1.0)
 
         box[0] = (box[0] * w - X) / W
         box[2] = (box[2] * w - X) / W
         box[1] = (box[1] * h - Y) / H
         box[3] = (box[3] * h - Y) / H
 
+        box = np.clip(box, 0.0, 1.0)
+
         if box[0]>=1.0 or box[2]<=0 or box[1]>=1.00 or box[3]<=0:
             continue
 
-        p_class = class_names.index(piece["piece"])
+        label = piece["piece"]
+        if not diff_color:
+            label = label.lower()
+        p_class = class_names.index(label)
         center_x = 0.5 * (box[0] + box[2])
         center_y = 0.5 * (box[1] + box[3])
         width = abs(box[2] - box[0])
@@ -190,6 +198,7 @@ def gen_yolo_annot(path, dst_dir, train_split, val_split, class_names):
         annots_txt += f'{p_class} {center_x} {center_y} {width} {height}\n'
 
     # shutil.copyfile(path, str(img_path))
+    # img_cropped = jpegBlur(img_cropped, np.random.randint(20, 80))
     cv2.imwrite(str(img_path), img_cropped)
 
     with open(annots_path, 'w+') as f:
@@ -197,7 +206,7 @@ def gen_yolo_annot(path, dst_dir, train_split, val_split, class_names):
 
     return 0
 
-def gen_yolo_annots(data_directory="/workspace/ChessLink/data/dataset_test_CL18", dst_dir="/workspace/ChessLink/data/dataset_yolo_18"):
+def gen_yolo_annots(data_directory="/workspace/ChessLink/data/dataset_test_CL21", dst_dir="/workspace/ChessLink/data/dataset_yolo_21", diff_color=True, overwrite=False):
 
     os.makedirs(dst_dir, exist_ok=True)
     os.makedirs(Path(dst_dir)/"train", exist_ok=True)
@@ -212,7 +221,10 @@ def gen_yolo_annots(data_directory="/workspace/ChessLink/data/dataset_test_CL18"
     train_split = 0.9
     val_split = 1.0 - train_split
 
-    class_names = ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']
+    if diff_color:
+        class_names = ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']
+    else:
+        class_names = ['p', 'n', 'b', 'r', 'q', 'k']
 
     params = [
         (
@@ -221,6 +233,8 @@ def gen_yolo_annots(data_directory="/workspace/ChessLink/data/dataset_test_CL18"
             train_split,
             val_split,
             class_names,
+            diff_color,
+            overwrite
         )
         for i in range(len(image_file_paths))
     ]
@@ -240,7 +254,7 @@ def gen_yolo_annots(data_directory="/workspace/ChessLink/data/dataset_test_CL18"
         f.write("val: ../../chessred_test_yolo/images\n")
         f.write("test: ../../chessred_test_yolo/images\n")
         f.write(f"nc: {len(class_names)}\n")
-        f.write(f"names: ['p', 'n', 'b', 'r', 'q', 'k', 'p', 'n', 'b', 'r', 'q', 'k']\n")
+        f.write(f"names: ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']\n")
 
         f.write(f"augment: True\n")
         # f.write(f"mosaic: 0.0\n")
@@ -403,8 +417,6 @@ def chessred_2_yolo(src_dir="/workspace/ChessLink/data/chessred_test", dst_dir="
         with open(annots_path, 'w+') as f:
             f.write(annots_txt)
 
-
-
 def gen_pieces_dataset(src_dir="/workspace/CL/data/dataset5", dst_dir="/workspace/CL/data/dataset_pieces", target_size=(64, 64)):
     os.makedirs(dst_dir, exist_ok=True)
 
@@ -452,6 +464,14 @@ def gen_pieces_dataset(src_dir="/workspace/CL/data/dataset5", dst_dir="/workspac
             cv2.imwrite(str(Path(dst_dir) / filename), croppedImg)
             # label = self.class_names.index(piece["piece"])
 
+
+def jpegBlur(im,q):
+    buf = io.BytesIO()
+    imageio.imwrite(buf,im,format='jpg',quality=q)
+    s = buf.getbuffer()
+    im = imageio.imread(s,format='jpg')
+    return im
+
 # merge([
 #         "/workspace/ChessLink/data/dataset_test_CL15",
 #         "/workspace/ChessLink/data/dataset_test_CL16",
@@ -467,13 +487,24 @@ def gen_pieces_dataset(src_dir="/workspace/CL/data/dataset5", dst_dir="/workspac
 #     "/workspace/ChessLink/data/dataset_yolo_merge2")
 
 # gen_yolo_annots_seg()
-gen_yolo_annots()
-# split()
-# prepare_dataset("/workspace/CL/data/dataset5", "/workspace/CL/data/dataset5_preprocessed")
+
+gen_yolo_annots(
+    data_directory="/workspace/ChessLink/data/dataset_test_CL21",
+    dst_dir="/workspace/ChessLink/data/dataset_yolo_22",
+    diff_color=False,
+    overwrite=True
+)
+
 # gen_pieces_dataset()
 # extract_kings_queens()
 # chessred_2_yolo()
 
-# files = glob.glob("/workspace/ChessLink/data/dataset_test_CL16/*.jpg")
+# files = glob.glob("/workspace/ChessLink/data/dataset_test_CL18/*.jpg")
 # visualize_annots(random.choice(files))
-# visualize_annots_yolo("/workspace/ChessLink/data/dataset_yolo_16")
+# visualize_annots("/workspace/ChessLink/data/dataset_test_CL18/data_c2127aa3-8844-11ee-a2c1-a036bc2aad3a.jpg")
+
+# im = cv2.imread(random.choice(files))
+# im = jpegBlur(im, 80)
+# cv2.imwrite("test.jpg", im)
+
+# visualize_annots_yolo("/workspace/ChessLink/data/dataset_yolo_19")

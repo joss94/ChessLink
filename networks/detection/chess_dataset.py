@@ -16,7 +16,7 @@ import json
 class ChessDataset(Dataset):
     def __init__(self, data_folder, img_size=480):
         print("Initializing dataset")
-        self.imgs = glob.glob(os.path.join(data_folder, "*.jpg")) # Create list of images
+        self.imgs = glob.glob(os.path.join(data_folder, "train", "images", "*.jpg")) # Create list of images
         self.img_size = img_size
 
         self.transformImg=tf.Compose([
@@ -55,14 +55,16 @@ class ChessDataset(Dataset):
         # read the image
         image=cv2.imread(img_path)
 
-        with open(img_path.replace(".jpg",".json")) as f:
-            Json =  json.loads(f.read())
+        with open(img_path.replace(".jpg",".txt").replace("images", "labels")) as f:
+            annots =  f.readlines()
 
         boxes = []
         labels=[]
-        for piece in Json["pieces"]:
-            box = np.array(piece["bbox"])
-            box = np.array([box[0], box[3], box[2], box[1]])
+        for line in annots:
+            e = line.split(" ")
+            p, c_x, c_y, w, h = (int(e[0]), float(e[1]), float(e[2]), float(e[3]), float(e[4]))
+
+            box = np.array([c_x - 0.5*w, c_y - 0.5*h, c_x + 0.5*w, c_y + 0.5*h])
             box = np.clip(box, 0.0, 1.0)
 
             if box[0] > box[2] or box[1] > box[3]:
@@ -76,7 +78,7 @@ class ChessDataset(Dataset):
 
             if box[2] > 0.0 and box[3] > 0.0 and box[0] < 1.0 and box[1] < 1.0:
                 boxes.append(box)
-                labels.append(self.classes.index(piece["piece"]))
+                labels.append(p)
         boxes = np.array(boxes)
         boxes *= self.img_size
 

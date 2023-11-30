@@ -8,6 +8,7 @@ import chess
 from utils import draw_results_on_image
 from chessboard_parser import ChessboardParser
 
+DEVICE=1
 USE_YOLO=True
 # USE_YOLO=False
 
@@ -28,7 +29,7 @@ if __name__ == "__main__":
 
     images_paths = glob.glob("/workspace/ChessLink/data/chessred_test/*/*.jpg")
     # images_paths = ["/workspace/ChessLink/data/chessred_test/0/G000_IMG040.jpg"]
-    parser = ChessboardParser(device=0, yolo_detect=USE_YOLO)
+    parser = ChessboardParser(device=DEVICE, yolo_detect=USE_YOLO)
 
     with open("/workspace/ChessLink/data/chessred_test/annotations.json") as f:
         annots = json.loads(f.read())
@@ -47,7 +48,10 @@ if __name__ == "__main__":
             p = chess.Piece.from_symbol(labels[piece["category_id"]])
             gt_board.set_piece_at(s, p)
 
-        results = parser.process_images([cv2.imread(image_path)])[0]
+        img = cv2.imread(image_path)
+        # im = cv2.resize(img, (img.shape[1], int(img.shape[0] * 0.8)))
+        # img = np.uint8(np.clip(img * 1.2, 0, 255))
+        results = parser.process_images([img])[0]
         board = chess.Board.empty()
 
         min_diffs = ""
@@ -77,15 +81,11 @@ if __name__ == "__main__":
         else:
             print(results["info"])
 
-
-
-
-        # if results["info"] == "ok" and min_count > 5:
+        # if results["info"] == "ok" and min_count > 0:
         #     image = cv2.imread(image_path)
         #     draw_results_on_image(image, results)
         #     cv2.imwrite("/workspace/ChessLink/evaluate.jpg", image)
         #     a = input()
-
 
         total += 1
         print(f'({int(perfect/total*100)}%) - {errors} - {min_diffs}')

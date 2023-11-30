@@ -36,7 +36,7 @@ class ChessboardParser():
         # self.segment_net = SegmentNet(pretrained_path="/workspace/CL/model/segment/best_ref.torch")
 
         if self.yolo_detect:
-            self.detect_net = YOLO('/workspace/ChessLink/runs/detect/train20/weights/last.pt')
+            self.detect_net = YOLO('/workspace/ChessLink/runs/detect/train45/weights/last.pt')
         else:
             self.detect_net = DetectNet(pretrained_path="/workspace/ChessLink/model/detection/latest.torch", device=self.device)
 
@@ -225,9 +225,6 @@ class ChessboardParser():
 
             label -= 1
 
-            if score < 0.5:
-                continue
-
             # Build a square polygon with same width as box, bottom-aligned with the box
             # This polygon represents the "foot" of the piece, discarding the top part which
             # can be superimposed to other squares
@@ -247,30 +244,11 @@ class ChessboardParser():
             piece = chess.Piece(piece_type = self.pieces_labels[(label)%6], color = label>=6)
 
             if area > 0 and score > pieces[best_square]["score"]:
-                pieces[best_square]["score"] = score
+                pieces[best_square]["score"] = float(score.cpu())
                 pieces[best_square]["box"] = box
-
                 pieces[best_square]["piece"] = piece.symbol()
                 board.set_piece_at(best_square, piece)
 
-            height = abs(box[3] - box[1])
-            if piece.symbol().islower() and height > highest_black_piece_height:
-                highest_black_piece_height = height
-                highest_black_piece_square = best_square
-
-            elif piece.symbol().isupper() and height > highest_white_piece_height:
-                highest_white_piece_height = height
-                highest_white_piece_square = best_square
-
-        if not len([p for p in pieces if p["piece"] == "k"]):
-            # pieces[highest_black_piece_square]["score"] = 1.0
-            # pieces[highest_black_piece_square]["box"] = k_box
-            pieces[highest_black_piece_square]["piece"] = "k"
-            board.set_piece_at(highest_black_piece_square, chess.Piece.from_symbol("k"))
-
-        if not len([p for p in pieces if p["piece"] == "K"]):
-            pieces[highest_white_piece_square]["piece"] = "K"
-            board.set_piece_at(highest_white_piece_square, chess.Piece.from_symbol("K"))
 
         return board, pieces
 
@@ -351,12 +329,11 @@ class ChessboardParser():
                     result["info"] = "HAND ON BOARD"
 
                 else:
-
                     img_cropped, [X, Y, W, H] = crop_board(image, board_poly)
                     img_cropped_flipped = cv2.flip(img_cropped, 1)
 
                     if self.yolo_detect:
-                        output = self.detect_net([img_cropped, img_cropped_flipped], device = [self.device_number], verbose=False)
+                        output = self.detect_net([img_cropped, img_cropped_flipped], device = [self.device_number], verbose=False, conf=.2)
 
                         detections = output[0]
                         detections_flipped = output[1]
@@ -388,7 +365,6 @@ class ChessboardParser():
                     detections = (boxes, scores, labels)
                     board, pieces = self.extract_position(image, detections, squares_corners)
 
-
                     original_h, original_w, _ = images[image_idx].shape
                     dw = w - original_w
                     dh = h - original_h
@@ -409,8 +385,6 @@ class ChessboardParser():
                         for pt in sq:
                             pt[0] -= int(0.5 * dw)
                             pt[1] -= int(0.5 * dh)
-
-
 
                     result["pieces"] = pieces
                     result["board"] = board.fen().split(" ")[0]

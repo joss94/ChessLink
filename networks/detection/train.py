@@ -295,4 +295,4 @@ if __name__ == "__main__":
     Net = DetectNet(train=True, device="cuda:1")#, pretrained_path="/workspace/ChessLink/model/detection/latest.torch")
     # Net.visualize_train()
     # Net.test("/workspace/CL/model/detection/5.torch", "/workspace/CL/data/test_images")
-    Net.train("/workspace/ChessLink/data/dataset_test_CL11")
+    Net.train("/workspace/ChessLink/data/dataset_yolo_18")
