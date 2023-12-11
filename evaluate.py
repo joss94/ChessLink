@@ -81,14 +81,15 @@ if __name__ == "__main__":
         else:
             print(results["info"])
 
-        # if results["info"] == "ok" and min_count > 0:
-        #     image = cv2.imread(image_path)
-        #     draw_results_on_image(image, results)
-        #     cv2.imwrite("/workspace/ChessLink/evaluate.jpg", image)
-        #     a = input()
-
         total += 1
         print(f'({int(perfect/total*100)}%) - {errors} - {min_diffs}')
+
+        if results["info"] == "ok" and min_count > 0:
+            image = cv2.imread(image_path)
+            draw_results_on_image(image, results)
+            cv2.imwrite("/workspace/ChessLink/evaluate.jpg", image)
+            a = input()
+
         # if not match:
 
             # print(board)

@@ -58,22 +58,29 @@ class CreateChessBoard(BasicPrimitive):
         for mod in piece.modifiers:
             if mod.type == 'NODES':
                 for input in [s for s in mod.node_group.interface.items_tree if s.in_out == 'INPUT']:
-                    if input.socket_type in ['NodeSocketFloat', 'NodeSocketInt']:
-                        min = input.min_value
-                        max = input.max_value
-                        if input.socket_type == 'NodeSocketFloat':
-                            value = np.random.random() * (max-min) + min
-                        else:
-                            value = np.random.randint(min, max)
-                        mod[input.identifier] = value
+                    if input.socket_type == 'NodeSocketFloat':
+                        mod[input.identifier] = np.random.uniform(input.min_value, input.max_value)
+                    elif input.socket_type == 'NodeSocketInt':
+                        mod[input.identifier] = np.random.randint(input.min_value, input.max_value)
+                    elif input.socket_type == 'NodeSocketBool':
+                         mod[input.identifier] = np.random.random() > 0.5
         piece.modifiers.update()
 
         if piece.data and piece.data.shape_keys:
             for kb in piece.data.shape_keys.key_blocks:
-                min = kb.slider_min
-                max = kb.slider_max
-                value = np.random.random() * (max-min) + min
-                kb.value = value
+                kb.value = np.random.uniform(kb.slider_min, kb.slider_max)
+
+        if piece.data:
+            for mat in piece.data.materials:
+                for n in mat.node_tree.nodes:
+                    if n.type == 'GROUP':
+                        for input in [s for s in n.node_tree.interface.items_tree if s.in_out == 'INPUT']:
+                            if input.socket_type == 'NodeSocketFloat':
+                                n.inputs[input.identifier].default_value = np.random.uniform(input.min_value, input.max_value)
+                            elif input.socket_type == 'NodeSocketInt':
+                                n.inputs[input.identifier].default_value = np.random.randint(input.min_value, input.max_value)
+                            elif input.socket_type == 'NodeSocketBool':
+                                n.inputs[input.identifier].default_value = np.random.random() > 0.5
 
         for obj in piece.children_recursive:
             self.randomize_piece(obj)
@@ -81,24 +88,11 @@ class CreateChessBoard(BasicPrimitive):
         piece.update_tag()
 
     # pylint: disable = W0221, W0511
-    def execute(self, chessboardFile: str) -> typing.Tuple[bpy.types.Collection, str]:
+    def execute(self) -> typing.Tuple[bpy.types.Collection, str]:
         """Extract head of a human
         """
-        print("Chessboard: ", chessboardFile)
-
         #Randomize pieces
         self.randomize_piece(bpy.data.objects["Chessboard"])
-
-        #Rnadomize material
-        bpy.data.materials["Pieces"].node_tree.nodes["black"].inputs[0].default_value = np.random.uniform(0.03, 0.1)
-        bpy.data.materials["Pieces"].node_tree.nodes["black"].inputs[1].default_value = np.random.uniform(0.5, 1.0)
-        bpy.data.materials["Pieces"].node_tree.nodes["black"].inputs[2].default_value = np.random.uniform(0.0, 0.2)
-
-        bpy.data.materials["Pieces"].node_tree.nodes["white"].inputs[0].default_value = np.random.uniform(0.03, 0.1)
-        bpy.data.materials["Pieces"].node_tree.nodes["white"].inputs[1].default_value = np.random.uniform(0.0, 1.0)
-        bpy.data.materials["Pieces"].node_tree.nodes["white"].inputs[2].default_value = np.random.uniform(0.3, 1.0)
-
-        bpy.data.materials["Pieces"].node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value = np.random.rand()
 
         board_size = 0.45
 
@@ -108,20 +102,17 @@ class CreateChessBoard(BasicPrimitive):
         collection = bpy.data.collections.new("ChessSet")
         bpy.context.scene.collection.children.link(collection)
 
-        # Import the chessboard
-        with bpy.data.libraries.load(chessboardFile) as (data_from, data_to):
-            data_to.objects = data_from.objects
-        for obj in data_to.objects:
-            collection.objects.link(obj)
-
-        board_obj = data_to.objects[0]
-        board_obj.scale *= board_size/8
-        board_obj.location.z = 0
-        board_obj["CL_piece"] = "board"
-
         occupied_squares=[]
+        index = 2
         for piece in ["p", "n", "b", "r", "q", "k", "P", "N", "B", "R", "Q", "K"]:
-            for i in range(random.randint(0, 4)):
+
+            min_qty = 1
+            max_qty = 3
+
+            if piece.lower() in ["q", "k"]:
+                min_qty = 2
+
+            for i in range(random.randint(min_qty, max_qty)):
                 square = random.randint(0, 64)
                 while square in occupied_squares:
                     square = random.randint(0, 64)
@@ -136,6 +127,8 @@ class CreateChessBoard(BasicPrimitive):
 
                     piece_obj["CL_piece"] = piece
                     piece_obj.parent = None
+                    piece_obj.pass_index = index
+                    index +=1
 
                     # Move piece
                     piece_obj.rotation_euler.rotate_axis("Z", random.uniform(0.0, 6.32))

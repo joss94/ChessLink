@@ -141,11 +141,11 @@ class ExportBoardPrimitive(BasicPrimitive):
         # Place all final pieces by duplicating temporary imports
         annot['pieces'] = []
         for piece_obj in boardCollection.objects:
-            if piece_obj["CL_piece"] != "board":
-                info = {}
-                info['piece'] = piece_obj["CL_piece"]
-                info['bbox'] = self.get_object_bouding_box(piece_obj)
-                annot['pieces'].append(info)
+            info = {}
+            info['piece'] = piece_obj["CL_piece"]
+            info['bbox'] = self.get_object_bouding_box(piece_obj)
+            info['index'] = piece_obj.pass_index
+            annot['pieces'].append(info)
 
         # Get board 2D projection
         annot['board'] = []
@@ -158,7 +158,6 @@ class ExportBoardPrimitive(BasicPrimitive):
         # Save annotations
         with open(str(Path(output_folder) / f'{filename}.json'), 'w+') as o:
             o.write(str(json.dumps(annot, indent = 4)))
-
 
     def get_output_names(self):
         return []
