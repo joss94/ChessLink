@@ -181,3 +181,6 @@ yolov8x-seg.pt
 #Trainings
 runs/
 wandb/
+
+# Blender backup
+*.blend1

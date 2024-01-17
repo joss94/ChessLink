@@ -4,7 +4,7 @@ USER=$(id -u -n)
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
 
-BASE_IMAGE="nvidia/cuda:11.3.1-cudnn8-devel-ubuntu18.04"
+BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04"
 IMAGE_NAME="test_${USER}"
 
 REPO_PATH="$(realpath $(dirname "$0")/..)"

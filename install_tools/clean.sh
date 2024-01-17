@@ -7,8 +7,8 @@ IMAGE_NAME="test_${USER}"
 CONTAINER_NAME="${IMAGE_NAME}_container"
 CONDA_ENV_NAME=jma_test
 
-CLEAN_IMAGE=false
-CLEAN_ENV=false
+CLEAN_IMAGE=true
+CLEAN_ENV=true
 
 usage()
 {
