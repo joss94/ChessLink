@@ -51,10 +51,3 @@ button:first-child {
     text-align: center;
     z-index: 9999; /* make sure it floats on top */
 }
-
-#downloadLink {
-    display: none;
-}
-#data {
-    display: none;
-}
