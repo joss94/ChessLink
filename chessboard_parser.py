@@ -17,11 +17,17 @@ from PIL import Image
 import scipy
 
 import math
-from utils import make_square_image, crop_board
+from utils import make_square_image, crop_board, yolo_boxes_iou, yolo_box_intersect
+
+FRCNN_DETECT_WEIGHTS = "/workspace/ChessLink/model/detection/latest.torch"
+YOLO_DETECT_WEIGHTS = '/workspace/ChessLink/runs/detect/real_mix9/weights/last.pt'
+YOLO_SEGMENT_WEIGHTS = '/workspace/ChessLink/runs/segment/train2/weights/last.pt'
+
+CONF = 0.5
 
 class ChessboardParser():
 
-    def __init__(self, device=3, yolo_detect=False):
+    def __init__(self, device=3, yolo_detect=False, use_segmentation=False):
         self.class_names = ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']
 
         self.device_number = device
@@ -31,16 +37,21 @@ class ChessboardParser():
             self.device=f"cuda:{device}"
 
         self.yolo_detect=yolo_detect
+        self.use_segmentation=use_segmentation
 
-        self.segment_net = YOLO('/workspace/ChessLink/runs/segment/train7/weights/best.pt')
-        # self.segment_net = SegmentNet(pretrained_path="/workspace/CL/model/segment/best_ref.torch")
+        self.segment_net = YOLO(YOLO_SEGMENT_WEIGHTS)
+
+        if self.use_segmentation:
+            self.segment_net2 = YOLO('/workspace/ChessLink/runs/segment/train26/weights/best.pt')
 
         if self.yolo_detect:
-            self.detect_net = YOLO('/workspace/ChessLink/runs/detect/train45/weights/last.pt')
+            print(f"Loading weights: {YOLO_DETECT_WEIGHTS}")
+            self.detect_net = YOLO(YOLO_DETECT_WEIGHTS)
         else:
-            self.detect_net = DetectNet(pretrained_path="/workspace/ChessLink/model/detection/latest.torch", device=self.device)
+            print(f"Loading weights: {FRCNN_DETECT_WEIGHTS}")
+            self.detect_net = DetectNet(pretrained_path=FRCNN_DETECT_WEIGHTS, device=self.device)
 
-        self.hands_net = mp.solutions.hands.Hands(max_num_hands=6, min_detection_confidence=0.1, static_image_mode=True)
+        self.hands_net = mp.solutions.hands.Hands(max_num_hands=6, min_detection_confidence=0.01, static_image_mode=True)
         self.mask = None
 
         self.hands_on_board = 0
@@ -67,7 +78,7 @@ class ChessboardParser():
         c = max(contours, key = cv2.contourArea)
 
         if len(c) < 4:
-            print("FOUND CONTOUR WITH LENGTH < 4")
+            # print("FOUND CONTOUR WITH LENGTH < 4")
             return None
 
         # find the biggest countour (c) by the area
@@ -86,7 +97,7 @@ class ChessboardParser():
                 return None
 
         if len(approx) != 4:
-            print("FAILED TO APPROXIMATE CONTOUR WITH 4 POINTS")
+            # print("FAILED TO APPROXIMATE CONTOUR WITH 4 POINTS")
             return None
 
         approx = np.reshape(approx, (4,2))
@@ -127,6 +138,10 @@ class ChessboardParser():
         lines_coeffs = []
         for cluster in pts_by_line:
             cluster = np.array(cluster)
+
+            # If one of the lines has less than 2 points, extraction will fail
+            if cluster.shape[0] < 2:
+                return None
             coeffs = np.polyfit(cluster[:,0],cluster[:,1],1)
             lines_coeffs.append(coeffs)
 
@@ -197,7 +212,7 @@ class ChessboardParser():
 
     def extract_position(self, image, detections, squares_corners):
 
-        boxes, scores, labels = detections
+        boxes, scores, labels, seg_boxes, seg_masks = detections
 
         h = image.shape[0]
         w = image.shape[1]
@@ -216,11 +231,6 @@ class ChessboardParser():
 
         board = chess.Board.empty()
 
-        highest_black_piece_square=None
-        highest_black_piece_height=0
-        highest_white_piece_square=None
-        highest_white_piece_height=0
-
         for box, score, label in zip(boxes, scores, labels):
 
             label -= 1
@@ -237,6 +247,30 @@ class ChessboardParser():
 
             box_poly = Polygon(box_base)
 
+            if self.use_segmentation:
+
+                ious = [yolo_boxes_iou(box, seg_box) for seg_box in seg_boxes]
+                seg_index = np.argmax(ious)
+                seg_box = seg_boxes[seg_index]
+                # seg_box = boxes[seg_box_index]
+                mean = -1
+                if max(ious) > 0:
+                    masked = image.copy()
+                    masked[seg_masks[seg_index] == False] = 0
+                    int_box = yolo_box_intersect(seg_box, box)
+
+                    int_box[0] = int(int_box[0] * w)
+                    int_box[1] = int(int_box[1] * h)
+                    int_box[2] = int(int_box[2] * w)
+                    int_box[3] = int(int_box[3] * h)
+
+                    if int_box[0] >= int_box[2] or int_box[1] >= int_box[3]:
+                        continue
+                    cropped2 = masked[int_box[1]:int_box[3],int_box[0]:int_box[2]]
+                    cropped2_value = cv2.cvtColor(cropped2, cv2.COLOR_BGR2HSV)[...,0].reshape(-1)
+                    non_black = cropped2_value[cropped2_value>0]
+                    mean = np.median(non_black)
+
             # Find the square that maximizes the intersection with the piece "foot"
             intersections = [(sq, squares_polygons[sq].intersection(box_poly).area) for sq in range(64)]
             best_square, area = max(intersections, key=lambda x: x[1])
@@ -244,18 +278,34 @@ class ChessboardParser():
             piece = chess.Piece(piece_type = self.pieces_labels[(label)%6], color = label>=6)
 
             if area > 0 and score > pieces[best_square]["score"]:
-                pieces[best_square]["score"] = float(score.cpu())
+                pieces[best_square]["score"] = score
                 pieces[best_square]["box"] = box
                 pieces[best_square]["piece"] = piece.symbol()
+                if self.use_segmentation:
+                    pieces[best_square]["mean_color"] = mean
                 board.set_piece_at(best_square, piece)
 
+        if self.use_segmentation:
+            all_means = [p["mean_color"] for p in pieces if p["piece"]]
+            kmeans, _ = scipy.cluster.vq.kmeans(all_means, 2)
+            kmeans.sort()
+
+            for i, piece in enumerate(pieces):
+                if piece["piece"] and piece["mean_color"] > 0:
+                    if abs(piece["mean_color"] - kmeans[0]) < abs(piece["mean_color"] - kmeans[1]):
+                        piece["piece"] = piece["piece"].lower()
+                    else:
+                        piece["piece"] = piece["piece"].upper()
+                    board.set_piece_at(i, chess.Piece.from_symbol(piece["piece"]))
+
+        # print(board)
+        # print("--------------")
 
         return board, pieces
 
     def process_images(self, images):
 
-        # Adjust aspect ratio to fit train set
-        squared_images = [make_square_image(img) for img in images]
+        squared_images = [make_square_image(img)[0] for img in images]
 
         # Run segmentation and detection
         masks_batch = self.segment_net(squared_images, device=self.device, verbose=False)
@@ -267,128 +317,175 @@ class ChessboardParser():
             result = {
                 "pieces": [],
                 "board": "",
-                "info": "ok"
+                "info": "ok",
+                "board_poly": []
                 }
 
-            h, w, _ = image.shape
-
             if not masks_batch[image_idx].masks:
+                result["info"] = "COULD NOT FIND BOARD"
+                results.append(result)
                 continue
 
+
             mask = np.uint8(masks_batch[image_idx].masks.data.cpu().numpy() * 255)
-            mask = np.swapaxes(mask, 0, 1)
-            mask = np.swapaxes(mask, 1, 2)
+            mask = np.swapaxes(np.swapaxes(mask, 0, 1), 1, 2)
             if mask.shape[2] > 1:
                 mask = np.expand_dims(mask[:,:,0],2)
 
             squares_corners = self.extract_squares_coords(image, mask)
+            if squares_corners is None:
+                result["info"] = "COULD NOT FIND BOARD"
+                results.append(result)
+                continue
 
             result["squares"] = squares_corners
 
-            if squares_corners is None:
-                result["info"] = "COULD NOT FIND BOARD"
+            original_h, original_w, _ = images[image_idx].shape
+            h, w, _ = image.shape
+            dw = w - original_w
+            dh = h - original_h
 
-            else:
+            mask = cv2.resize(mask, (w,h))
 
-                mask = cv2.resize(mask, (w,h))
+            board_poly = np.array([
+                squares_corners[7][1],
+                squares_corners[63][2],
+                squares_corners[56][3],
+                squares_corners[0][0]]
+            )
+            result["board_poly"] = board_poly
 
-                board_poly = np.array([
-                    squares_corners[7][1],
-                    squares_corners[63][2],
-                    squares_corners[56][3],
-                    squares_corners[0][0]]
-                 )
+            board_mask = cv2.fillPoly(np.zeros(mask.shape, np.uint8), [board_poly], color=255)
 
-                board_mask = cv2.fillPoly(np.zeros(mask.shape, np.uint8), [board_poly], color=255)
+            imageRGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-                imageRGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            imageRGB.flags.writeable=False
+            hands_dets = self.hands_net.process(imageRGB)
 
-                imageRGB.flags.writeable=False
-                hands_dets = self.hands_net.process(imageRGB)
+            if hands_dets.multi_hand_landmarks:
+                hands_mask = np.zeros((h,w))
+                for handLms in hands_dets.multi_hand_landmarks: # working with each hand
+                    for _, lm in enumerate(handLms.landmark):
+                        h, w, _ = image.shape
+                        cx, cy = int(lm.x * w), int(lm.y * h)
+                        cv2.circle(hands_mask, (cx, cy), int(0.01 * w), 255, cv2.FILLED)
+                        cv2.circle(image, (cx, cy), int(0.01 * w), (0,0,255), cv2.FILLED)
 
-                if hands_dets.multi_hand_landmarks:
-                    hands_mask = np.zeros((h,w))
-                    for handLms in hands_dets.multi_hand_landmarks: # working with each hand
-                        for _, lm in enumerate(handLms.landmark):
-                            h, w, _ = image.shape
-                            cx, cy = int(lm.x * w), int(lm.y * h)
-                            cv2.circle(hands_mask, (cx, cy), int(0.01 * w), 255, cv2.FILLED)
-                            cv2.circle(image, (cx, cy), int(0.01 * w), (0,0,255), cv2.FILLED)
+                board_mask = board_mask/2 + hands_mask/2
+                board_mask[board_mask<200] = 0
 
-                    board_mask = board_mask/2 + hands_mask/2
-                    board_mask[board_mask<200] = 0
-
-                    if np.max(board_mask.reshape(-1)) > 0:
-                        self.hands_on_board = min(self.hands_on_board+1, 3)
-                    else:
-                        self.hands_on_board = max(self.hands_on_board-1, 0)
+                if np.max(board_mask.reshape(-1)) > 0:
+                    self.hands_on_board = min(self.hands_on_board+1, 3)
                 else:
                     self.hands_on_board = max(self.hands_on_board-1, 0)
+            else:
+                self.hands_on_board = max(self.hands_on_board-1, 0)
 
-                if self.hands_on_board > 0:
-                    result["info"] = "HAND ON BOARD"
+            seg_boxes=None
+            seg_labels=None
+            seg_masks=None
+            seg_scores=None
 
-                else:
-                    img_cropped, [X, Y, W, H] = crop_board(image, board_poly)
-                    img_cropped_flipped = cv2.flip(img_cropped, 1)
+            if self.hands_on_board > 0:
+                result["info"] = "HAND ON BOARD"
+                result["board_poly"] = []
+                results.append(result)
+                continue
 
-                    if self.yolo_detect:
-                        output = self.detect_net([img_cropped, img_cropped_flipped], device = [self.device_number], verbose=False, conf=.2)
+            img_cropped, [X, Y, W, H], [left, top, right, bottom] = crop_board(image, board_poly)
+            img_cropped_flipped = cv2.flip(img_cropped, 1)
 
-                        detections = output[0]
-                        detections_flipped = output[1]
+            if self.yolo_detect:
+                output = self.detect_net(
+                    [img_cropped, img_cropped_flipped],
+                    device = [self.device_number],
+                    verbose=False,
+                    conf=CONF
+                )
 
-                        boxes = np.array([b.cpu().numpy() for b in detections.boxes.xyxyn]).reshape((-1,4))
-                        labels = [int(c.cpu()) + 1 for c in detections.boxes.cls]
-                        scores = [s.cpu() for s in detections.boxes.conf]
+                if self.use_segmentation:
+                    output_seg = self.segment_net2(
+                        img_cropped,
+                        device = [self.device_number],
+                        verbose=False,
+                        conf=.01
+                    )[0].cpu()
 
-                        boxes_flipped = np.array([b.cpu().numpy() for b in detections_flipped.boxes.xyxyn]).reshape((-1,4))
-                        labels_flipped = [int(c.cpu()) + 1 for c in detections_flipped.boxes.cls]
-                        scores_flipped = [s.cpu() for s in detections_flipped.boxes.conf]
-                        boxes_flipped[:, [0, 2]]*=-1
-                        boxes_flipped[:, [0, 2]]+=1
-                        boxes_flipped[:, [2, 0]] = boxes_flipped[:, [0, 2]]
+                detections = output[0]
+                detections_flipped = output[1]
 
-                        boxes = np.concatenate([boxes, boxes_flipped])
-                        scores.extend(scores_flipped)
-                        labels.extend(labels_flipped)
-                    else:
-                        boxes, scores, labels = self.detect_net.infer([img_cropped], 0.5)[0]
+                boxes = np.array([b.cpu().numpy() for b in detections.boxes.xyxyn]).reshape((-1,4))
+                labels = [int(c.cpu()) + 1 for c in detections.boxes.cls]
+                scores = [s.cpu() for s in detections.boxes.conf]
 
-                    for box in boxes:
+                boxes_flipped = np.array([b.cpu().numpy() for b in detections_flipped.boxes.xyxyn]).reshape((-1,4))
+                labels_flipped = [int(c.cpu()) + 1 for c in detections_flipped.boxes.cls]
+                scores_flipped = [s.cpu() for s in detections_flipped.boxes.conf]
+                boxes_flipped[:, [0, 2]]*=-1
+                boxes_flipped[:, [0, 2]]+=1
+                boxes_flipped[:, [2, 0]] = boxes_flipped[:, [0, 2]]
+
+                boxes = np.concatenate([boxes, boxes_flipped])
+                scores.extend(scores_flipped)
+                labels.extend(labels_flipped)
+
+                if self.use_segmentation:
+                    seg_boxes = np.array([b.numpy() for b in output_seg.boxes.xyxyn]).reshape((-1,4))
+                    seg_labels = [int(c.cpu()) + 1 for c in output_seg.boxes.cls]
+                    seg_scores = [s.cpu() for s in output_seg.boxes.conf]
+                    seg_masks = [np.uint8(output_seg.masks.data.numpy()[i, :, :]>0) for i in range(output_seg.masks.numpy().shape[0])]
+
+                    for box in seg_boxes:
                         box[0] = (box[0] * W + X) / w
                         box[2] = (box[2] * W + X) / w
                         box[1] = (box[1] * H + Y) / h
                         box[3] = (box[3] * H + Y) / h
 
+                    for i, mask in enumerate(seg_masks):
+                        # if seg_labels[i] <=1:
+                        #     continue
+                        mask = cv2.resize(mask, (img_cropped.shape[1], img_cropped.shape[0]))
+                        seg_masks[i] = cv2.copyMakeBorder(mask, Y, h-H-Y, X, w-W-X, cv2.BORDER_CONSTANT, value=(0,0,0))
 
-                    detections = (boxes, scores, labels)
-                    board, pieces = self.extract_position(image, detections, squares_corners)
+            else:
+                boxes, scores, labels = self.detect_net.infer([img_cropped], 0.0)[0]
+                labels = np.array(labels)+1
 
-                    original_h, original_w, _ = images[image_idx].shape
-                    dw = w - original_w
-                    dh = h - original_h
+            for box in boxes:
+                box[0] = (box[0] * W + X) / w
+                box[2] = (box[2] * W + X) / w
+                box[1] = (box[1] * H + Y) / h
+                box[3] = (box[3] * H + Y) / h
 
-                    for p in pieces:
-                        if not p["piece"]:
-                            continue
-                        p["box"][0] = (p["box"][0] * w - 0.5 * dw) / original_w
-                        p["box"][2] = (p["box"][2] * w - 0.5 * dw) / original_w
-                        p["box"][1] = (p["box"][1] * h - 0.5 * dh) / original_h
-                        p["box"][3] = (p["box"][3] * h - 0.5 * dh) / original_h
+            detections = (boxes, scores, labels, seg_boxes, seg_masks)
+            board, pieces = self.extract_position(image, detections, squares_corners)
 
-                        p["center"][0] -= int(0.5 * dw)
-                        p["center"][1] -= int(0.5 * dh)
+            for p in pieces:
+                if not p["piece"]:
+                    continue
+                p["box"][0] = (p["box"][0] * w - 0.5 * dw) / original_w
+                p["box"][2] = (p["box"][2] * w - 0.5 * dw) / original_w
+                p["box"][1] = (p["box"][1] * h - 0.5 * dh) / original_h
+                p["box"][3] = (p["box"][3] * h - 0.5 * dh) / original_h
 
+                p["center"][0] -= int(0.5 * dw)
+                p["center"][1] -= int(0.5 * dh)
 
-                    for sq in result["squares"]:
-                        for pt in sq:
-                            pt[0] -= int(0.5 * dw)
-                            pt[1] -= int(0.5 * dh)
+            for pt in result["board_poly"]:
+                pt[0] -= int(0.5 * dw)
+                pt[1] -= int(0.5 * dh)
 
-                    result["pieces"] = pieces
-                    result["board"] = board.fen().split(" ")[0]
+            for sq in result["squares"]:
+                for pt in sq:
+                    pt[0] -= int(0.5 * dw)
+                    pt[1] -= int(0.5 * dh)
+
+            result["pieces"] = pieces
+            result["board"] = board.fen().split(" ")[0]
+
+            # print(board)
 
             results.append(result)
+
 
         return results

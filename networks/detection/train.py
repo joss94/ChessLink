@@ -13,6 +13,7 @@ import shutil
 
 from .chess_dataset import ChessDataset
 
+DEVICE=2
 
 def collate_fn(batch):
     """
@@ -111,33 +112,29 @@ class DetectNet:
 
 
 
-    def train(self, dataset_path):
+    def train(self, dataset_path, dataset_val_path, name):
         dataset = ChessDataset(dataset_path, self.img_size)
+        datase_val = ChessDataset(dataset_val_path, self.img_size)
 
-        # split the dataset in train and test set
-        torch.manual_seed(1)
-        indices = torch.randperm(len(dataset)).tolist()
-        test_split = 0.8
-        tsize = int(len(dataset)*test_split)
-        subset = torch.utils.data.Subset(dataset, indices[:tsize])
-        subset_test = torch.utils.data.Subset(dataset, indices[tsize:])
+        model_dir = os.path.join("/workspace/ChessLink/model/detection/", name)
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
 
         # define training and validation data loaders
         data_loader = torch.utils.data.DataLoader(
-            subset, batch_size=10, shuffle=True, num_workers=16,
+            dataset, batch_size=10, shuffle=True, num_workers=16,
             collate_fn=collate_fn)
 
         data_loader_test = torch.utils.data.DataLoader(
-            subset_test, batch_size=10, shuffle=False, num_workers=16,
+            datase_val, batch_size=10, shuffle=False, num_workers=16,
             collate_fn=collate_fn)
 
-        print(f"Training set: {len(subset)} items")
-        print(f"Validation set: {len(subset_test)} items")
-
+        print(f"Training set: {len(dataset)} items")
+        print(f"Validation set: {len(datase_val)} items")
 
         # construct an optimizer
         params = [p for p in self.model.parameters() if p.requires_grad]
-        optimizer = torch.optim.Adam(params=params,lr=1e-3)
+        optimizer = torch.optim.Adam(params=params,lr=5e-3)
         # optimizer = torch.optim.SGD(params, lr=1e-3, momentum=0.9, weight_decay=0.0005)
 
         # and a learning rate scheduler which decreases the learning rate
@@ -180,7 +177,7 @@ class DetectNet:
                     val_loss = self.evaluate(data_loader_test)
                     print(f"(batch {total_batch_index}) Train: {total_loss / total_items:.4f}   -   Val: {val_loss:.4f}")
 
-                    model_path = os.path.join("/workspace/ChessLink/model/detection/", "latest.torch")
+                    model_path = os.path.join(model_dir, "latest.torch")
                     torch.save(self.model.state_dict(), model_path)
 
                     if val_loss < min_val_loss:
@@ -292,7 +289,7 @@ class DetectNet:
         cv2.imwrite("/workspace/ChessLink/train.jpg", img)
 
 if __name__ == "__main__":
-    Net = DetectNet(train=True, device="cuda:1")#, pretrained_path="/workspace/ChessLink/model/detection/latest.torch")
+    Net = DetectNet(train=True, device=f"cuda:{DEVICE}")#, pretrained_path="/workspace/ChessLink/model/detection/latest.torch")
     # Net.visualize_train()
     # Net.test("/workspace/CL/model/detection/5.torch", "/workspace/CL/data/test_images")
-    Net.train("/workspace/ChessLink/data/dataset_yolo_18")
+    Net.train("/workspace/ChessLink/data/dataset_yolo_merge/train", "/workspace/ChessLink/data/chessred_test_yolo", name="train2")

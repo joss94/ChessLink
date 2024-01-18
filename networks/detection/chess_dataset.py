@@ -16,7 +16,7 @@ import json
 class ChessDataset(Dataset):
     def __init__(self, data_folder, img_size=480):
         print("Initializing dataset")
-        self.imgs = glob.glob(os.path.join(data_folder, "train", "images", "*.jpg")) # Create list of images
+        self.imgs = glob.glob(os.path.join(data_folder, "images", "*.jpg")) # Create list of images
         self.img_size = img_size
 
         self.transformImg=tf.Compose([

@@ -6,7 +6,7 @@ from utils import draw_results_on_image
 
 DEVICE=0
 USE_YOLO=True
-# USE_YOLO=False
+USE_YOLO=False
 
 
 image_path = '/workspace/ChessLink/data/gamestate_test/0020.png'
@@ -16,13 +16,16 @@ image_path = '/workspace/ChessLink/data/test_images/1000011469.jpg'
 # image_path = '/workspace/ChessLink/data/dataset_test_CL3/data_75cfde3a-820f-11ee-8c9c-a036bc2aad3a.jpg'
 # image_path = '/workspace/ChessLink/data/dataset_test_CL3/data_8897d096-820f-11ee-b357-a036bc2aad3a.jpg'
 
-chessboard_parser = ChessboardParser(DEVICE, USE_YOLO)
 image = cv2.imread(image_path)
 
-# image = cv2.flip(image, 1)
+VIDEO_PATH = "/workspace/ChessLink/data/test_images/caruana_1080p.mp4"
+cap = cv2.VideoCapture(VIDEO_PATH)
+cap.set(cv2.CAP_PROP_POS_FRAMES, 7400)
+ret, image = cap.read()
 
-# image = np.uint8(image + 100 * (image * -1 + 255) / 255)
-# image = np.uint8(image*2)
+
+
+chessboard_parser = ChessboardParser(DEVICE, USE_YOLO)
 
 results = chessboard_parser.process_images([image])[0]
 draw_results_on_image(image, results)

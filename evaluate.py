@@ -8,9 +8,10 @@ import chess
 from utils import draw_results_on_image
 from chessboard_parser import ChessboardParser
 
-DEVICE=1
+DEVICE=3
 USE_YOLO=True
 # USE_YOLO=False
+BATCH_SIZE=64
 
 labels=["P", "R", "N", "B", "Q", "K", "p", "r", "n", "b", "q", "k"]
 
@@ -37,58 +38,72 @@ if __name__ == "__main__":
     perfect = 0
     total = 0
     errors={}
-    for image_path in images_paths:
 
-        annot = [a for a in annots["images"] if image_path.endswith(a["file_name"])][0]
-        gt_pieces = [a for a in annots["annotations"]["pieces"] if a["image_id"] == annot["id"]]
+    index = 0
+    print(" ")
+    while index < len(images_paths):
 
-        gt_board = chess.Board.empty()
-        for piece in gt_pieces:
-            s = chess.SQUARE_NAMES.index(piece["chessboard_position"])
-            p = chess.Piece.from_symbol(labels[piece["category_id"]])
-            gt_board.set_piece_at(s, p)
+        batch_gt_boards = []
+        images = []
+        for k in range(index, index + BATCH_SIZE):
+            if k >= len(images_paths):
+                break
 
-        img = cv2.imread(image_path)
-        # im = cv2.resize(img, (img.shape[1], int(img.shape[0] * 0.8)))
-        # img = np.uint8(np.clip(img * 1.2, 0, 255))
-        results = parser.process_images([img])[0]
-        board = chess.Board.empty()
+            gt_board = chess.Board.empty()
+            image_path = images_paths[k]
+            annot = [a for a in annots["images"] if image_path.endswith(a["file_name"])][0]
+            gt_pieces = [a for a in annots["annotations"]["pieces"] if a["image_id"] == annot["id"]]
+            for piece in gt_pieces:
+                s = chess.SQUARE_NAMES.index(piece["chessboard_position"])
+                p = chess.Piece.from_symbol(labels[piece["category_id"]])
+                gt_board.set_piece_at(s, p)
+            batch_gt_boards.append(gt_board)
 
-        min_diffs = ""
-        if results["info"] == "ok":
-            board.set_board_fen(results["board"])
+            images.append(cv2.imread(image_path))
 
-            min_count = 1e3
-            for i in range(4):
-                board = rotate_board(board)
+        batch_results = parser.process_images(images)
 
-                str1 = str(gt_board)#.replace("k", "q").replace("K", "Q")
-                str2 = str(board)#.replace("k", "q").replace("K", "Q")
+        for k, (results, gt_board) in enumerate(zip(batch_results, batch_gt_boards)):
 
-                diffs = [f"{a}-{b}" for a, b in zip(str1, str2) if a != b]# and a.lower() != "k" and b.lower() != "k"]
+            board = chess.Board.empty()
 
-                count = len(diffs)
-                if count < min_count:
-                    min_count = count
-                    min_diffs = diffs
-                if count==0:
-                    perfect+=1
-                    break
+            min_diffs = ""
+            if results["info"] == "ok":
+                board.set_board_fen(results["board"])
 
-            for diff in min_diffs:
-                key = diff[0].lower()
-                errors[key] = errors.get(key, 0) + 1
-        else:
-            print(results["info"])
+                min_count = 1e3
+                for i in range(4):
+                    board = rotate_board(board)
 
-        total += 1
-        print(f'({int(perfect/total*100)}%) - {errors} - {min_diffs}')
+                    str1 = str(gt_board)#.replace("k", "q").replace("K", "Q")
+                    str2 = str(board)#.replace("k", "q").replace("K", "Q")
 
-        if results["info"] == "ok" and min_count > 0:
-            image = cv2.imread(image_path)
-            draw_results_on_image(image, results)
-            cv2.imwrite("/workspace/ChessLink/evaluate.jpg", image)
-            a = input()
+                    diffs = [f"{a}-{b}" for a, b in zip(str1, str2) if a != b]# and a.lower() != "k" and b.lower() != "k"]
+
+                    count = len(diffs)
+                    if count < min_count:
+                        min_count = count
+                        min_diffs = diffs
+                    if count==0:
+                        perfect+=1
+                        break
+
+                if "k-q" in min_diffs:
+                    cv2.imwrite(f"./output/images/{index+k}.jpg", images[k])
+                for diff in min_diffs:
+                    key = f'{diff[0].lower()}{diff[2].lower()}'
+                    errors[key] = errors.get(key, 0) + 1
+
+            total += 1
+            filtered_errors = list(filter(lambda x:x[1]>10, sorted(errors.items(), key=lambda x:-x[1])))
+
+        print(f'\033[F{index + BATCH_SIZE}/{len(images_paths)} {int(perfect/total*100)}% {filtered_errors}')
+
+        # if results["info"] == "ok" and min_count > 0:
+        #     image = cv2.imread(image_path)
+        #     draw_results_on_image(image, results)
+        #     cv2.imwrite("/workspace/ChessLink/evaluate.jpg", image)
+        #     a = input()
 
         # if not match:
 
@@ -97,3 +112,5 @@ if __name__ == "__main__":
             # print(gt_board)
 
         # print(board)
+
+        index += BATCH_SIZE
