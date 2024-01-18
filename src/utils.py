@@ -19,49 +19,37 @@ import uuid
 def make_square_image(img):
     ar = img.shape[0]/img.shape[1]
     borders = np.array([0,0,0,0])
-    if ar < 1.00:
+    if ar < 0.99:
         borders[[0,1]] = int(0.5 * (img.shape[1] - img.shape[0]))
-    elif ar > 1.00:
-        borders[[2,3]] = int(0.5 * (img.shape[0] - img.shape[1]))
-
+    elif ar > 1.01:
+        borders[[2,3]] = int(0.5 * (img.shape[0] / img.shape[1]))
     output = cv2.copyMakeBorder(img, borders[0], borders[1], borders[2], borders[3], cv2.BORDER_CONSTANT, value = (0,0,0))
-    return output, borders
+    return output
 
 def crop_board(img, corners):
 
     h, w, _ = img.shape
 
     [X, Y, W, H] = cv2.boundingRect(corners)
-    center = (X + 0.5 * W, Y + 0.5 * H)
-
+    X -= 0.1 * W
+    Y -= 0.1 * H
     W *= 1.2
     H *= 1.2
-
+    X = max(0, X)
+    Y = max(0, Y)
+    W = min(W, w - X - 1)
+    H = min(H, h - Y - 1)
     ar = H/W
-    if ar < 1.0:
-        H = W
-    else:
-        W = H
+    if ar < 0.99:
+        dh = W - H
+        H = min(H + dh, h - Y - 1)
+        Y = max(0, Y - 0.5 * dh)
+    elif ar > 1.01:
+        dw = H - W
+        W = min(W + dw,  w - X - 1)
+        X =  max(0, X - 0.5 * dw)
 
-    X = center[0] - 0.5 * W
-    Y = center[1] - 0.5 * H
-
-    X = int(X)
-    Y = int(Y)
-    W = int(W)
-    H = int(H)
-
-    left = max(0, -X)
-    top = max(0, -Y)
-    right = max(0, X + left + W - w)
-    bottom = max(0, Y + top + H - h)
-
-    if np.max([left, top, right, bottom]) > 0:
-        output = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value = (0,0,0))
-    else:
-        output = img.copy()
-
-    return output[Y+top:Y+top+H,X+left:X+left+W], [X, Y, W, H], [left, top, right, bottom]
+    return img[int(Y):int(Y+H),int(X):int(X+W)], [X, Y, W, H]
 
 def align_image(img, board_pos, output_size=640):
     board_size = 0.8
@@ -196,22 +184,6 @@ def draw_results_on_image(image, results):
             color=(0,255,0),
             thickness=max(1, int(h/200))
         )
-
-def yolo_box_intersect(box1, box2):
-    start_x = max(box1[0], box2[0])
-    end_x = max(start_x, min(box1[2], box2[2]))
-
-    start_y = max(box1[1], box2[1])
-    end_y = max(start_y, min(box1[3], box2[3]))
-
-    return [start_x, start_y, end_x, end_y]
-
-
-def yolo_boxes_iou(box1, box2):
-    x1, y1, x2, y2 = yolo_box_intersect(box1, box2)
-    inter = (x2 - x1) * (y2 - y1)
-    union = (box1[2] - box1[0]) * (box1[3] - box1[1]) + (box2[2] - box2[0]) * (box2[3] - box2[1])
-    return inter/union
 
 
 # merge(["/workspace/CL/dataset_augment", "/workspace/CL/dataset3"], "/workspace/CL/dataset_merge")

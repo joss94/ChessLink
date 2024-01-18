@@ -1,7 +1,0 @@
-classes=2
-train=/workspace/CL/data/dataset3/train.txt
-valid=/workspace/CL/data/dataset3/val.txt
-names=train/train.names
-backup=/workspace/CL/detection/backup/
-gpus=2
-

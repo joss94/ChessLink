@@ -5,8 +5,7 @@ USER_ID=$(id -u)
 GROUP_ID=$(id -g)
 
 BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04"
-IMAGE_NAME="test_${USER}"
-
+IMAGE_NAME="chesslink_${USER}"
 REPO_PATH="$(realpath $(dirname "$0")/..)"
 
 VLGUSERS_ID=$(getent group vglusers | cut -d: -f3)
