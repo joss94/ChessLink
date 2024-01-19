@@ -19,15 +19,14 @@ import scipy
 import math
 from utils import make_square_image, crop_board, yolo_boxes_iou, yolo_box_intersect
 
-FRCNN_DETECT_WEIGHTS = "/workspace/ChessLink/model/detection/latest.torch"
 YOLO_DETECT_WEIGHTS = '/workspace/ChessLink/runs/detect/real_mix9/weights/last.pt'
 YOLO_SEGMENT_WEIGHTS = '/workspace/ChessLink/runs/segment/train2/weights/last.pt'
 
 CONF = 0.5
 
-class ChessboardParser():
+class ChessboardParser(detect_weights=YOLO_DETECT_WEIGHTS, segment_weights=YOLO_SEGMENT_WEIGHTS):
 
-    def __init__(self, device=3, yolo_detect=False, use_segmentation=False):
+    def __init__(self, device=3, use_segmentation=False):
         self.class_names = ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']
 
         self.device_number = device
@@ -36,20 +35,15 @@ class ChessboardParser():
         else:
             self.device=f"cuda:{device}"
 
-        self.yolo_detect=yolo_detect
         self.use_segmentation=use_segmentation
 
-        self.segment_net = YOLO(YOLO_SEGMENT_WEIGHTS)
+        self.segment_net = YOLO(segment_weights)
 
         if self.use_segmentation:
             self.segment_net2 = YOLO('/workspace/ChessLink/runs/segment/train26/weights/best.pt')
 
-        if self.yolo_detect:
-            print(f"Loading weights: {YOLO_DETECT_WEIGHTS}")
-            self.detect_net = YOLO(YOLO_DETECT_WEIGHTS)
-        else:
-            print(f"Loading weights: {FRCNN_DETECT_WEIGHTS}")
-            self.detect_net = DetectNet(pretrained_path=FRCNN_DETECT_WEIGHTS, device=self.device)
+        print(f"Loading weights: {detect_weights}")
+        self.detect_net = YOLO(detect_weights)
 
         self.hands_net = mp.solutions.hands.Hands(max_num_hands=6, min_detection_confidence=0.01, static_image_mode=True)
         self.mask = None
@@ -395,61 +389,56 @@ class ChessboardParser():
             img_cropped, [X, Y, W, H], [left, top, right, bottom] = crop_board(image, board_poly)
             img_cropped_flipped = cv2.flip(img_cropped, 1)
 
-            if self.yolo_detect:
-                output = self.detect_net(
-                    [img_cropped, img_cropped_flipped],
+            output = self.detect_net(
+                [img_cropped, img_cropped_flipped],
+                device = [self.device_number],
+                verbose=False,
+                conf=CONF
+            )
+
+            if self.use_segmentation:
+                output_seg = self.segment_net2(
+                    img_cropped,
                     device = [self.device_number],
                     verbose=False,
-                    conf=CONF
-                )
+                    conf=.01
+                )[0].cpu()
 
-                if self.use_segmentation:
-                    output_seg = self.segment_net2(
-                        img_cropped,
-                        device = [self.device_number],
-                        verbose=False,
-                        conf=.01
-                    )[0].cpu()
+            detections = output[0]
+            detections_flipped = output[1]
 
-                detections = output[0]
-                detections_flipped = output[1]
+            boxes = np.array([b.cpu().numpy() for b in detections.boxes.xyxyn]).reshape((-1,4))
+            labels = [int(c.cpu()) + 1 for c in detections.boxes.cls]
+            scores = [s.cpu() for s in detections.boxes.conf]
 
-                boxes = np.array([b.cpu().numpy() for b in detections.boxes.xyxyn]).reshape((-1,4))
-                labels = [int(c.cpu()) + 1 for c in detections.boxes.cls]
-                scores = [s.cpu() for s in detections.boxes.conf]
+            boxes_flipped = np.array([b.cpu().numpy() for b in detections_flipped.boxes.xyxyn]).reshape((-1,4))
+            labels_flipped = [int(c.cpu()) + 1 for c in detections_flipped.boxes.cls]
+            scores_flipped = [s.cpu() for s in detections_flipped.boxes.conf]
+            boxes_flipped[:, [0, 2]]*=-1
+            boxes_flipped[:, [0, 2]]+=1
+            boxes_flipped[:, [2, 0]] = boxes_flipped[:, [0, 2]]
 
-                boxes_flipped = np.array([b.cpu().numpy() for b in detections_flipped.boxes.xyxyn]).reshape((-1,4))
-                labels_flipped = [int(c.cpu()) + 1 for c in detections_flipped.boxes.cls]
-                scores_flipped = [s.cpu() for s in detections_flipped.boxes.conf]
-                boxes_flipped[:, [0, 2]]*=-1
-                boxes_flipped[:, [0, 2]]+=1
-                boxes_flipped[:, [2, 0]] = boxes_flipped[:, [0, 2]]
+            boxes = np.concatenate([boxes, boxes_flipped])
+            scores.extend(scores_flipped)
+            labels.extend(labels_flipped)
 
-                boxes = np.concatenate([boxes, boxes_flipped])
-                scores.extend(scores_flipped)
-                labels.extend(labels_flipped)
+            if self.use_segmentation:
+                seg_boxes = np.array([b.numpy() for b in output_seg.boxes.xyxyn]).reshape((-1,4))
+                seg_labels = [int(c.cpu()) + 1 for c in output_seg.boxes.cls]
+                seg_scores = [s.cpu() for s in output_seg.boxes.conf]
+                seg_masks = [np.uint8(output_seg.masks.data.numpy()[i, :, :]>0) for i in range(output_seg.masks.numpy().shape[0])]
 
-                if self.use_segmentation:
-                    seg_boxes = np.array([b.numpy() for b in output_seg.boxes.xyxyn]).reshape((-1,4))
-                    seg_labels = [int(c.cpu()) + 1 for c in output_seg.boxes.cls]
-                    seg_scores = [s.cpu() for s in output_seg.boxes.conf]
-                    seg_masks = [np.uint8(output_seg.masks.data.numpy()[i, :, :]>0) for i in range(output_seg.masks.numpy().shape[0])]
+                for box in seg_boxes:
+                    box[0] = (box[0] * W + X) / w
+                    box[2] = (box[2] * W + X) / w
+                    box[1] = (box[1] * H + Y) / h
+                    box[3] = (box[3] * H + Y) / h
 
-                    for box in seg_boxes:
-                        box[0] = (box[0] * W + X) / w
-                        box[2] = (box[2] * W + X) / w
-                        box[1] = (box[1] * H + Y) / h
-                        box[3] = (box[3] * H + Y) / h
-
-                    for i, mask in enumerate(seg_masks):
-                        # if seg_labels[i] <=1:
-                        #     continue
-                        mask = cv2.resize(mask, (img_cropped.shape[1], img_cropped.shape[0]))
-                        seg_masks[i] = cv2.copyMakeBorder(mask, Y, h-H-Y, X, w-W-X, cv2.BORDER_CONSTANT, value=(0,0,0))
-
-            else:
-                boxes, scores, labels = self.detect_net.infer([img_cropped], 0.0)[0]
-                labels = np.array(labels)+1
+                for i, mask in enumerate(seg_masks):
+                    # if seg_labels[i] <=1:
+                    #     continue
+                    mask = cv2.resize(mask, (img_cropped.shape[1], img_cropped.shape[0]))
+                    seg_masks[i] = cv2.copyMakeBorder(mask, Y, h-H-Y, X, w-W-X, cv2.BORDER_CONSTANT, value=(0,0,0))
 
             for box in boxes:
                 box[0] = (box[0] * W + X) / w
