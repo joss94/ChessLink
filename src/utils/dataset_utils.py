@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 import uuid
 
-from utils import make_square_image, crop_board
+from utils.image_utils import make_square_image, crop_board
 
 import hashlib
 

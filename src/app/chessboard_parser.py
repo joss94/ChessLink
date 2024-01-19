@@ -1,32 +1,33 @@
+import os
 import cv2
 import numpy as np
+import mediapipe as mp
 
-from networks.detection.train import DetectNet
-from networks.segmentation.train_segmentation import SegmentNet
 import time
 import json
 import chess
 import chess.svg
+import scipy
+import math
 from cairosvg import svg2png
 from shapely.geometry import Polygon, Point
 
 from ultralytics import YOLO
-import mediapipe as mp
 from io import BytesIO
 from PIL import Image
-import scipy
 
-import math
-from utils import make_square_image, crop_board, yolo_boxes_iou, yolo_box_intersect
+from networks.detection.train import DetectNet
+from utils.image_utils import make_square_image, crop_board
 
+FRCNN_DETECT_WEIGHTS = os.path.join(os.getcwd(), "model/detection/latest.torch")
 YOLO_DETECT_WEIGHTS = '/workspace/ChessLink/runs/detect/real_mix9/weights/last.pt'
 YOLO_SEGMENT_WEIGHTS = '/workspace/ChessLink/runs/segment/train2/weights/last.pt'
 
 CONF = 0.5
 
-class ChessboardParser(detect_weights=YOLO_DETECT_WEIGHTS, segment_weights=YOLO_SEGMENT_WEIGHTS):
+class ChessboardParser():
 
-    def __init__(self, device=3, use_segmentation=False):
+    def __init__(self, device=-1, yolo_detect=False):
         self.class_names = ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']
 
         self.device_number = device
@@ -35,15 +36,16 @@ class ChessboardParser(detect_weights=YOLO_DETECT_WEIGHTS, segment_weights=YOLO_
         else:
             self.device=f"cuda:{device}"
 
-        self.use_segmentation=use_segmentation
+        self.yolo_detect=yolo_detect
 
-        self.segment_net = YOLO(segment_weights)
+        self.segment_net = YOLO(YOLO_SEGMENT_WEIGHTS)
 
-        if self.use_segmentation:
-            self.segment_net2 = YOLO('/workspace/ChessLink/runs/segment/train26/weights/best.pt')
-
-        print(f"Loading weights: {detect_weights}")
-        self.detect_net = YOLO(detect_weights)
+        if self.yolo_detect:
+            print(f"Loading weights: {YOLO_DETECT_WEIGHTS}")
+            self.detect_net = YOLO(YOLO_DETECT_WEIGHTS)
+        else:
+            print(f"Loading weights: {FRCNN_DETECT_WEIGHTS}")
+            self.detect_net = DetectNet(pretrained_path=FRCNN_DETECT_WEIGHTS, device=self.device)
 
         self.hands_net = mp.solutions.hands.Hands(max_num_hands=6, min_detection_confidence=0.01, static_image_mode=True)
         self.mask = None
@@ -241,30 +243,6 @@ class ChessboardParser(detect_weights=YOLO_DETECT_WEIGHTS, segment_weights=YOLO_
 
             box_poly = Polygon(box_base)
 
-            if self.use_segmentation:
-
-                ious = [yolo_boxes_iou(box, seg_box) for seg_box in seg_boxes]
-                seg_index = np.argmax(ious)
-                seg_box = seg_boxes[seg_index]
-                # seg_box = boxes[seg_box_index]
-                mean = -1
-                if max(ious) > 0:
-                    masked = image.copy()
-                    masked[seg_masks[seg_index] == False] = 0
-                    int_box = yolo_box_intersect(seg_box, box)
-
-                    int_box[0] = int(int_box[0] * w)
-                    int_box[1] = int(int_box[1] * h)
-                    int_box[2] = int(int_box[2] * w)
-                    int_box[3] = int(int_box[3] * h)
-
-                    if int_box[0] >= int_box[2] or int_box[1] >= int_box[3]:
-                        continue
-                    cropped2 = masked[int_box[1]:int_box[3],int_box[0]:int_box[2]]
-                    cropped2_value = cv2.cvtColor(cropped2, cv2.COLOR_BGR2HSV)[...,0].reshape(-1)
-                    non_black = cropped2_value[cropped2_value>0]
-                    mean = np.median(non_black)
-
             # Find the square that maximizes the intersection with the piece "foot"
             intersections = [(sq, squares_polygons[sq].intersection(box_poly).area) for sq in range(64)]
             best_square, area = max(intersections, key=lambda x: x[1])
@@ -275,25 +253,7 @@ class ChessboardParser(detect_weights=YOLO_DETECT_WEIGHTS, segment_weights=YOLO_
                 pieces[best_square]["score"] = score
                 pieces[best_square]["box"] = box
                 pieces[best_square]["piece"] = piece.symbol()
-                if self.use_segmentation:
-                    pieces[best_square]["mean_color"] = mean
                 board.set_piece_at(best_square, piece)
-
-        if self.use_segmentation:
-            all_means = [p["mean_color"] for p in pieces if p["piece"]]
-            kmeans, _ = scipy.cluster.vq.kmeans(all_means, 2)
-            kmeans.sort()
-
-            for i, piece in enumerate(pieces):
-                if piece["piece"] and piece["mean_color"] > 0:
-                    if abs(piece["mean_color"] - kmeans[0]) < abs(piece["mean_color"] - kmeans[1]):
-                        piece["piece"] = piece["piece"].lower()
-                    else:
-                        piece["piece"] = piece["piece"].upper()
-                    board.set_piece_at(i, chess.Piece.from_symbol(piece["piece"]))
-
-        # print(board)
-        # print("--------------")
 
         return board, pieces
 
@@ -389,56 +349,35 @@ class ChessboardParser(detect_weights=YOLO_DETECT_WEIGHTS, segment_weights=YOLO_
             img_cropped, [X, Y, W, H], [left, top, right, bottom] = crop_board(image, board_poly)
             img_cropped_flipped = cv2.flip(img_cropped, 1)
 
-            output = self.detect_net(
-                [img_cropped, img_cropped_flipped],
-                device = [self.device_number],
-                verbose=False,
-                conf=CONF
-            )
-
-            if self.use_segmentation:
-                output_seg = self.segment_net2(
-                    img_cropped,
+            if self.yolo_detect:
+                output = self.detect_net(
+                    [img_cropped, img_cropped_flipped],
                     device = [self.device_number],
                     verbose=False,
-                    conf=.01
-                )[0].cpu()
+                    conf=CONF
+                )
 
-            detections = output[0]
-            detections_flipped = output[1]
+                detections = output[0]
+                detections_flipped = output[1]
 
-            boxes = np.array([b.cpu().numpy() for b in detections.boxes.xyxyn]).reshape((-1,4))
-            labels = [int(c.cpu()) + 1 for c in detections.boxes.cls]
-            scores = [s.cpu() for s in detections.boxes.conf]
+                boxes = np.array([b.cpu().numpy() for b in detections.boxes.xyxyn]).reshape((-1,4))
+                labels = [int(c.cpu()) + 1 for c in detections.boxes.cls]
+                scores = [s.cpu() for s in detections.boxes.conf]
 
-            boxes_flipped = np.array([b.cpu().numpy() for b in detections_flipped.boxes.xyxyn]).reshape((-1,4))
-            labels_flipped = [int(c.cpu()) + 1 for c in detections_flipped.boxes.cls]
-            scores_flipped = [s.cpu() for s in detections_flipped.boxes.conf]
-            boxes_flipped[:, [0, 2]]*=-1
-            boxes_flipped[:, [0, 2]]+=1
-            boxes_flipped[:, [2, 0]] = boxes_flipped[:, [0, 2]]
+                boxes_flipped = np.array([b.cpu().numpy() for b in detections_flipped.boxes.xyxyn]).reshape((-1,4))
+                labels_flipped = [int(c.cpu()) + 1 for c in detections_flipped.boxes.cls]
+                scores_flipped = [s.cpu() for s in detections_flipped.boxes.conf]
+                boxes_flipped[:, [0, 2]]*=-1
+                boxes_flipped[:, [0, 2]]+=1
+                boxes_flipped[:, [2, 0]] = boxes_flipped[:, [0, 2]]
 
-            boxes = np.concatenate([boxes, boxes_flipped])
-            scores.extend(scores_flipped)
-            labels.extend(labels_flipped)
+                boxes = np.concatenate([boxes, boxes_flipped])
+                scores.extend(scores_flipped)
+                labels.extend(labels_flipped)
 
-            if self.use_segmentation:
-                seg_boxes = np.array([b.numpy() for b in output_seg.boxes.xyxyn]).reshape((-1,4))
-                seg_labels = [int(c.cpu()) + 1 for c in output_seg.boxes.cls]
-                seg_scores = [s.cpu() for s in output_seg.boxes.conf]
-                seg_masks = [np.uint8(output_seg.masks.data.numpy()[i, :, :]>0) for i in range(output_seg.masks.numpy().shape[0])]
-
-                for box in seg_boxes:
-                    box[0] = (box[0] * W + X) / w
-                    box[2] = (box[2] * W + X) / w
-                    box[1] = (box[1] * H + Y) / h
-                    box[3] = (box[3] * H + Y) / h
-
-                for i, mask in enumerate(seg_masks):
-                    # if seg_labels[i] <=1:
-                    #     continue
-                    mask = cv2.resize(mask, (img_cropped.shape[1], img_cropped.shape[0]))
-                    seg_masks[i] = cv2.copyMakeBorder(mask, Y, h-H-Y, X, w-W-X, cv2.BORDER_CONSTANT, value=(0,0,0))
+            else:
+                boxes, scores, labels = self.detect_net.infer([img_cropped], 0.0)[0]
+                labels = np.array(labels)+1
 
             for box in boxes:
                 box[0] = (box[0] * W + X) / w
@@ -476,5 +415,3 @@ class ChessboardParser(detect_weights=YOLO_DETECT_WEIGHTS, segment_weights=YOLO_
 
             results.append(result)
 
-
-        return results

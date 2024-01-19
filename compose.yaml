@@ -1,18 +1,15 @@
 version: "3.9"
 
-services: 
+services:
   chesslink:
     container_name: chesslink
-    #hostname: chesslink
     build: ./
-    volumes: 
-      - ./src:/workspace/src
-      - ./env:/workspace/env
+    volumes:
+      - ./src:/src
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
-      - PATH=/miniconda/bin:$PATH
     networks:
-      - chesslink-network    
+      - chesslink-network
 networks:
   chesslink-network:
     name: chesslink-network

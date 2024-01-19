@@ -9,10 +9,16 @@
 </head>
 
 <body>
-    <video id="live" width="100%" height="100%" controls autoplay playsinline muted></video>
+    <div id="video-container">
+        <video id="live" width="100%" height="100%" autoplay playsinline muted></video>
+    </div>
+
+    <div class="controls">
+        <button class="positive" id="start" onclick="onStartClicked()">Start</button>
+        <button class="positive" id="stop" onclick="onStopClicked()">Stop</button>
+    </div>
+
     <div id="message"></div>
-    <!-- <a id="downloadLink" download="mediarecorder.webm" name="mediarecorder.webm" href></a> -->
-    <p id="data"></p>
 
     <script src="js/web_app.js"></script>
 

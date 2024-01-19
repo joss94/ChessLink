@@ -4,9 +4,8 @@ import glob
 import json
 import chess
 
-
-from utils import draw_results_on_image
-from chessboard_parser import ChessboardParser
+from utils.image_utils import draw_results_on_image
+from app.chessboard_parser import ChessboardParser
 
 DEVICE=3
 USE_YOLO=True

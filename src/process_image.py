@@ -1,8 +1,8 @@
 import cv2
 import numpy as np
 
-from chessboard_parser import ChessboardParser
-from utils import draw_results_on_image
+from app.chessboard_parser import ChessboardParser
+from utils.image_utils import draw_results_on_image
 
 DEVICE=0
 USE_YOLO=True

@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 import glob
 
-from utils import make_square_image, crop_board
+from utils.image_utils import make_square_image, crop_board
 
 
 # Load a model

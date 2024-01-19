@@ -15,55 +15,69 @@ let constraints = {
             ideal: 480,
             max: 1080
         },
-        framerate: 30,
+        framerate: 15,
         facingMode: 'environment',
     }
 };
 
-let liveVideoElement = document.querySelector('#live');
-let messageElement = document.querySelector('#message');
+const startBtn = document.querySelector('button#start');
+const stopBtn = document.querySelector('button#stop');
+const liveVideoElement = document.querySelector('#live');
+const messageElement = document.querySelector('#message');
 
 liveVideoElement.controls = false;
 messageElement.style.display = "none";
 
-let mediaRecorder;
+let mediaRecorder = null;
 let chunks = [];
 let localStream = null;
 let containerType = "video/mp4"; //defaults to webm but we switch to mp4 on Safari 14.0.2+
 
-if (!navigator.mediaDevices.getUserMedia) {
-    alert('navigator.mediaDevices.getUserMedia not supported on your browser, use the latest version of Firefox or Chrome');
-} else {
-    if (window.MediaRecorder == undefined) {
-        alert('MediaRecorder not supported on your browser, use the latest version of Firefox or Chrome');
-    } else {
-        navigator.mediaDevices.getUserMedia(constraints)
-            .then(function(stream) {
-                localStream = stream;
+initializeApp();
+startStream();
 
-                localStream.getTracks().forEach(function(track) {
-                    if (track.kind == "video") {
-                        track.onended = function(event) {
-                            console.log("video track.onended Video track.readyState=" + track.readyState + ", track.muted=" + track.muted);
-                        }
-                    }
-                });
-
-                liveVideoElement.srcObject = localStream;
-                liveVideoElement.play();
-
-            }).catch(function(err) {
-                console.log('navigator.getUserMedia error: ' + err);
-            });
-    }
+function initializeApp() {
+    startBtn.style.display = "block";
+    stopBtn.style.display = "none";
+    messageElement.style.display = "none";
 }
 
-function onBtnRecordClicked() {
+function startStream() {
+    if (!navigator.mediaDevices.getUserMedia) {
+        alert('navigator.mediaDevices.getUserMedia not supported on your browser, use the latest version of Firefox or Chrome');
+        return;
+    }
+
+    if (window.MediaRecorder == undefined) {
+        alert('MediaRecorder not supported on your browser, use the latest version of Firefox or Chrome');
+        return;
+    }
+
+    navigator.mediaDevices.getUserMedia(constraints)
+        .then(function(stream) {
+            localStream = stream;
+
+            localStream.getTracks().forEach(function(track) {
+                if (track.kind == "video") {
+                    track.onended = function(event) {
+                        console.log("video track.onended Video track.readyState=" + track.readyState + ", track.muted=" + track.muted);
+                    }
+                }
+            });
+
+            liveVideoElement.srcObject = localStream;
+            liveVideoElement.play();
+
+        }).catch(function(err) {
+            console.log('navigator.getUserMedia error: ' + err);
+        });
+}
+
+
+function startRecording() {
     if (localStream == null) {
         alert('Could not get local stream from mic/camera');
     } else {
-        recBtn.disabled = true;
-        chunks = [];
 
         /* use the stream */
         console.log('Start recording...');
@@ -105,6 +119,8 @@ function onBtnRecordClicked() {
 
         mediaRecorder.ondataavailable = function(e) {
             console.log('mediaRecorder.ondataavailable, e.data.size=' + e.data.size);
+
+            chunks = [];
             if (e.data && e.data.size > 0) {
                 chunks.push(e.data);
             }
@@ -123,34 +139,34 @@ function onBtnRecordClicked() {
                 })
                 .then(response => response.json()) // Parse the data as JSON.
                 .then(data => {
-                    let message;
-                    if (data) {
-                        message = "Video Uploaded!";
-                    } else {
-                        message = "Video upload failed!";
+                    if (!data) {
+                        showPopupMessage("Streaming error, cannot reach server", 5000)
+                        stopRecording()
                     }
-                    console.log(message);
-                    messageElement.style.display = 'block';
-                    messageElement.innerText = message;
-                    setTimeout(function(){
-                        messageElement.style.display = 'none'; // hide the message after 5 seconds
-                    }, 5000);
                 })
                 .catch(error => {
                     console.error('There has been an error with your fetch operation:', error);
+                    showPopupMessage("Streaming error, cannot reach server", 5000)
+                    stopRecording()
                 });
         };
 
         mediaRecorder.onerror = function(e) {
             console.log('mediaRecorder.onerror: ' + e);
+            startBtn.style.display = "block";
+            stopBtn.style.display = "none";
         };
 
         mediaRecorder.onstart = function() {
             console.log('mediaRecorder.onstart, mediaRecorder.state = ' + mediaRecorder.state);
+            startBtn.style.display = "none";
+            stopBtn.style.display = "block";
         };
 
         mediaRecorder.onstop = function() {
             console.log('mediaRecorder.onstop, mediaRecorder.state = ' + mediaRecorder.state);
+            startBtn.style.display = "block";
+            stopBtn.style.display = "none";
         };
 
         mediaRecorder.start(1000);
@@ -158,6 +174,28 @@ function onBtnRecordClicked() {
             console.log(track.getSettings());
         })
     }
+}
+
+function stopRecording() {
+    if (mediaRecorder != null) {
+        mediaRecorder.stop();
+    }
+}
+
+function showPopupMessage(message, timeout) {
+    messageElement.style.display = 'block';
+    messageElement.innerText = message;
+    setTimeout(function(){
+        messageElement.style.display = 'none'; // hide the message after 5 seconds
+    }, timeout);
+}
+
+function onStartClicked() {
+    startRecording()
+}
+
+function onStopClicked() {
+    stopRecording()
 }
 
 navigator.mediaDevices.ondevicechange = function(event) {
