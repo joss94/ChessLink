@@ -4,8 +4,6 @@ import cv2
 from app.video_parser import VideoParser
 
 DEVICE=1
-USE_YOLO=True
-# USE_YOLO=False
 
 VIDEO_PATH = "/workspace/ChessLink/data/test_images/carlsen.mp4"
 # VIDEO_PATH = "/workspace/ChessLink/data/test_images/carlsen_2.mp4"
@@ -15,7 +13,7 @@ VIDEO_PATH = "/workspace/ChessLink/data/test_images/caruana.mp4"
 
 if __name__ == "__main__":
 
-    parser = VideoParser(device=DEVICE, yolo_detect=USE_YOLO)
+    parser = VideoParser(device=DEVICE)
 
     cap = cv2.VideoCapture(VIDEO_PATH)
 

@@ -737,7 +737,7 @@ def gen_pieces_dataset(src_dir="/workspace/ChessLink/data/dataset_test_CL23", ds
 
             croppedImg = image[int(bbox[3]*h):int(bbox[1]*h), int(bbox[0]*w):int(bbox[2]*w)]
             # croppedImg = cv2.resize(make_square_image(croppedImg), (64,64))
-            croppedImg, _ = make_square_image(croppedImg)
+            croppedImg = make_square_image(croppedImg)
 
             label = piece["piece"]
 

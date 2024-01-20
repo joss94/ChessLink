@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import time
 
 import chess
 
@@ -12,18 +13,22 @@ class VideoParser():
     """
     Constructor
     """
-    def __init__(self, device=-1, yolo_detect=False, verbose=True):
-        self.chessboard_parser = ChessboardParser(device, yolo_detect)
+    def __init__(self, device=-1, verbose=True):
+        self.chessboard_parser = ChessboardParser(device)
 
         self.verbose = verbose
-
-        self.buffer = []
         self.buff_size = 1
-        self.writer = None
         self.process_freq = 1
+
         self.save_individuals = False
         self.save_video = False
+        self.still_time = 10
 
+        self.reset()
+
+    def reset(self):
+        self.buffer = []
+        self.writer = None
         self.safe_board = None
         self.safe_board = chess.Board(chess.STARTING_FEN)
         self.board_img = None
@@ -31,7 +36,8 @@ class VideoParser():
         self.board_mask = None
         self.last_frame = None
         self.still = 0
-        self.still_time = 10
+        self.status = ""
+        self.last_board_det_time = -1
 
 
     """
@@ -99,10 +105,12 @@ class VideoParser():
         results = self.chessboard_parser.process_images([f for _, f in self.buffer])
 
         # Handle results to update board with "temporal consistency"
-        for (r, (frame_idx, image)) in zip(results, self.buffer):
+        for (r, (frame_idx, frame)) in zip(results, self.buffer):
+
+            self.status = r["status"]
 
             # Ignore frames where board was not detected, or hand was in front
-            if r["info"] != "ok":
+            if r["status"] != "OK":
                 continue
 
             board = chess.Board(r["board"])
@@ -138,7 +146,7 @@ class VideoParser():
             # otherwise it is too heavy computationally
             moves_list = []
             if len(still_squares) > 0:
-                moves_list = moves_between_positions(self.safe_board, board, 5, False, still_squares)
+                moves_list = moves_between_positions(self.safe_board, board, 2, False, still_squares)
 
             # Update stable board with identified moves
             if len(moves_list):
@@ -162,23 +170,23 @@ class VideoParser():
             self.board_mask = cv2.dilate(self.board_mask, None, iterations=50)
 
 
-        # Draw results on images
-        if self.save_individuals or self.save_video:
-            for (r, (frame_idx, image)) in zip(results, self.buffer):
-                image_cpy = image.copy()
-                draw_results_on_image(image_cpy, r)
+        # # Draw results on images
+        # if self.save_individuals or self.save_video:
+        #     for (r, (frame_idx, image)) in zip(results, self.buffer):
+        #         image_cpy = image.copy()
+        #         draw_results_on_image(image_cpy, r)
 
-                if self.save_individuals:
-                    if not os.path.exists("output"):
-                        os.makedirs("output", exist_ok=True)
-                    cv2.imwrite(f"output/{frame_idx}.jpg", image_cpy)
+        #         if self.save_individuals:
+        #             if not os.path.exists("output"):
+        #                 os.makedirs("output", exist_ok=True)
+        #             cv2.imwrite(f"output/{frame_idx}.jpg", image_cpy)
 
-                if self.save_video:
-                    if not writer:
-                        vid_size = (1080,720)
-                        fps = int(25/self.process_freq)
-                        writer = cv2.VideoWriter("output/video.avi", cv2.VideoWriter_fourcc(*'MJPG'), fps, vid_size)
-                    writer.write(cv2.resize(image_cpy, vid_size))
+        #         if self.save_video:
+        #             if not writer:
+        #                 vid_size = (1080,720)
+        #                 fps = int(25/self.process_freq)
+        #                 writer = cv2.VideoWriter("output/video.avi", cv2.VideoWriter_fourcc(*'MJPG'), fps, vid_size)
+        #             writer.write(cv2.resize(image_cpy, vid_size))
 
         # Clear buffer
         self.buffer.clear()
@@ -189,12 +197,15 @@ class VideoParser():
     def process_next_frame(self, frame, frame_idx):
 
         # First thing we need is to detect a board in the image
-        if self.board_mask is None:
+        t = time.time()
+        if t - self.last_board_det_time > 5:
+            self.last_board_det_time = t
             self.buffer.append([frame_idx, frame])
+            self.process_buffer()
 
         # If we have more than one frame, try to detect motion and run analysis to one
         # "still" image after each motion
-        elif self.last_frame is not None:
+        if self.board_mask is not None and self.last_frame is not None:
 
             _, move_count = self.compute_motion_mask(frame, self.last_frame, self.board_mask)
 

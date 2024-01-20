@@ -7,7 +7,7 @@ RUN apt-get update && \
 COPY ./env/requirements.txt /env/requirements.txt
 RUN python3 -m pip install -r /env/requirements.txt
 
-RUN python3 -m pip install shapely
+RUN python3 -m pip install shapely  onnx
 
 # Run the Nginx server
-CMD cd /src;python3 -m web_app.upload_server
+# CMD cd /src;python3 -m web_app.upload_server

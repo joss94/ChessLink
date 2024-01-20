@@ -8,8 +8,6 @@ from utils.image_utils import draw_results_on_image
 from app.chessboard_parser import ChessboardParser
 
 DEVICE=3
-USE_YOLO=True
-# USE_YOLO=False
 BATCH_SIZE=64
 
 labels=["P", "R", "N", "B", "Q", "K", "p", "r", "n", "b", "q", "k"]
@@ -29,7 +27,7 @@ if __name__ == "__main__":
 
     images_paths = glob.glob("/workspace/ChessLink/data/chessred_test/*/*.jpg")
     # images_paths = ["/workspace/ChessLink/data/chessred_test/0/G000_IMG040.jpg"]
-    parser = ChessboardParser(device=DEVICE, yolo_detect=USE_YOLO)
+    parser = ChessboardParser(device=DEVICE)
 
     with open("/workspace/ChessLink/data/chessred_test/annotations.json") as f:
         annots = json.loads(f.read())

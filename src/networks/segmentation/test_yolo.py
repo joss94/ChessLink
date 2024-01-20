@@ -25,7 +25,7 @@ cap.set(cv2.CAP_PROP_POS_FRAMES, 3000)
 ret, image = cap.read()
 
 
-img_cropped = make_square_image(image)[0]
+img_cropped = make_square_image(image)
 # img_cropped = cv2.resize(image, (640, 640))
 
 

@@ -5,9 +5,6 @@ from app.chessboard_parser import ChessboardParser
 from utils.image_utils import draw_results_on_image
 
 DEVICE=0
-USE_YOLO=True
-USE_YOLO=False
-
 
 image_path = '/workspace/ChessLink/data/gamestate_test/0020.png'
 image_path = '/workspace/ChessLink/data/chessred_test/0/G000_IMG040.jpg'
@@ -23,9 +20,7 @@ cap = cv2.VideoCapture(VIDEO_PATH)
 cap.set(cv2.CAP_PROP_POS_FRAMES, 7400)
 ret, image = cap.read()
 
-
-
-chessboard_parser = ChessboardParser(DEVICE, USE_YOLO)
+chessboard_parser = ChessboardParser(DEVICE)
 
 results = chessboard_parser.process_images([image])[0]
 draw_results_on_image(image, results)

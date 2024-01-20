@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <base target="_blank">
+    <link rel="stylesheet" type="text/css" href="css/web_app.css">
+</head>
+
+<body>
+
+
+
+    <canvas id="canvas"> </canvas>
+    <div id="video-container">
+        <video id="live" width="100%" height="100%" autoplay playsinline muted></video>
+    </div>
+
+    <div class="controls">
+        <button class="positive" id="process" onclick="onProcessClicked()">Process</button>
+        <button class="positive" id="stop" onclick="onStopClicked()">Stop</button>
+    </div>
+
+    <div id="message"></div>
+    <div id="info"></div>
+
+    <script src="js/session.js"></script>
+
+</body>
+
+</html>

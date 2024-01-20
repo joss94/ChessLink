@@ -9,16 +9,17 @@
 </head>
 
 <body>
-    <div id="video-container">
-        <video id="live" width="100%" height="100%" autoplay playsinline muted></video>
-    </div>
-
-    <div class="controls">
-        <button class="positive" id="start" onclick="onStartClicked()">Start</button>
-        <button class="positive" id="stop" onclick="onStopClicked()">Stop</button>
-    </div>
 
     <div id="message"></div>
+    <select id="stream_type" name="Stream type" onchange="onStreamTypeChanged()">
+        <option value="RTSP" selected>RTSP</option>
+        <option value="Camera">Camera</option>
+        <option value="File">File</option>
+    </select>
+
+    <input type="text" id="rtsp_url" name="URL" size="10"/>
+
+    <button class="positive" id="start" onclick="onStartClicked()">Start</button>
 
     <script src="js/web_app.js"></script>
 
