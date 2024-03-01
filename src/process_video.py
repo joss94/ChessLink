@@ -13,7 +13,7 @@ VIDEO_PATH = "/workspace/ChessLink/data/test_images/caruana.mp4"
 
 if __name__ == "__main__":
 
-    parser = VideoParser(device=DEVICE)
+    parser = VideoParser()
 
     cap = cv2.VideoCapture(VIDEO_PATH)
 

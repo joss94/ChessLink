@@ -65,7 +65,7 @@ if __name__ == "__main__":
             board = chess.Board.empty()
 
             min_diffs = ""
-            if results["info"] == "ok":
+            if results["status"] == "ok":
                 board.set_board_fen(results["board"])
 
                 min_count = 1e3
@@ -96,7 +96,7 @@ if __name__ == "__main__":
 
         print(f'\033[F{index + BATCH_SIZE}/{len(images_paths)} {int(perfect/total*100)}% {filtered_errors}')
 
-        # if results["info"] == "ok" and min_count > 0:
+        # if results["status"] == "ok" and min_count > 0:
         #     image = cv2.imread(image_path)
         #     draw_results_on_image(image, results)
         #     cv2.imwrite("/workspace/ChessLink/evaluate.jpg", image)

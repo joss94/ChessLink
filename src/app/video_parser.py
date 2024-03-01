@@ -1,3 +1,4 @@
+import os
 import cv2
 import numpy as np
 import time
@@ -13,14 +14,14 @@ class VideoParser():
     """
     Constructor
     """
-    def __init__(self, device=-1, verbose=True):
-        self.chessboard_parser = ChessboardParser(device)
+    def __init__(self, verbose=True):
+        self.chessboard_parser = ChessboardParser()
 
         self.verbose = verbose
         self.buff_size = 1
         self.process_freq = 1
 
-        self.save_individuals = False
+        self.save_individuals = True
         self.save_video = False
         self.still_time = 10
 
@@ -102,10 +103,10 @@ class VideoParser():
             return None
 
         # Parse positions frame by frame
-        results = self.chessboard_parser.process_images([f for _, f in self.buffer])
+        results = self.chessboard_parser.process_images(self.buffer)
 
         # Handle results to update board with "temporal consistency"
-        for (r, (frame_idx, frame)) in zip(results, self.buffer):
+        for (r, frame) in zip(results, self.buffer):
 
             self.status = r["status"]
 
@@ -170,29 +171,28 @@ class VideoParser():
             self.board_mask = cv2.dilate(self.board_mask, None, iterations=50)
 
 
-        # # Draw results on images
-        # if self.save_individuals or self.save_video:
-        #     for (r, (frame_idx, image)) in zip(results, self.buffer):
-        #         image_cpy = image.copy()
-        #         draw_results_on_image(image_cpy, r)
+        # Draw results on images
+        if self.save_individuals or self.save_video:
+            for (r, image) in zip(results, self.buffer):
+                image_cpy = image.copy()
+                draw_results_on_image(image_cpy, r)
 
-        #         if self.save_individuals:
-        #             if not os.path.exists("output"):
-        #                 os.makedirs("output", exist_ok=True)
-        #             cv2.imwrite(f"output/{frame_idx}.jpg", image_cpy)
+                if self.save_individuals:
+                    if not os.path.exists("output"):
+                        os.makedirs("output", exist_ok=True)
+                    cv2.imwrite(f"output/frame.jpg", image_cpy)
 
-        #         if self.save_video:
-        #             if not writer:
-        #                 vid_size = (1080,720)
-        #                 fps = int(25/self.process_freq)
-        #                 writer = cv2.VideoWriter("output/video.avi", cv2.VideoWriter_fourcc(*'MJPG'), fps, vid_size)
-        #             writer.write(cv2.resize(image_cpy, vid_size))
+                if self.save_video:
+                    if not writer:
+                        vid_size = (1080,720)
+                        fps = int(25/self.process_freq)
+                        writer = cv2.VideoWriter("output/video.avi", cv2.VideoWriter_fourcc(*'MJPG'), fps, vid_size)
+                    writer.write(cv2.resize(image_cpy, vid_size))
 
         # Clear buffer
         self.buffer.clear()
 
         return results
-
 
     def process_next_frame(self, frame, frame_idx):
 
@@ -200,8 +200,8 @@ class VideoParser():
         t = time.time()
         if t - self.last_board_det_time > 5:
             self.last_board_det_time = t
-            self.buffer.append([frame_idx, frame])
-            self.process_buffer()
+            self.buffer.append(frame)
+            results = self.process_buffer()
 
         # If we have more than one frame, try to detect motion and run analysis to one
         # "still" image after each motion
@@ -211,7 +211,7 @@ class VideoParser():
 
             self.still = self.still + 1 if move_count == 0 else 0
             if self.still == self.still_time:
-                self.buffer.append([frame_idx, frame])
+                self.buffer.append(frame)
 
         # Update last frame reference
         self.last_frame = frame
@@ -219,5 +219,6 @@ class VideoParser():
         # Run analysis on buffer when it is full
         if len(self.buffer) >= self.buff_size:
             results = self.process_buffer()
+
 
 

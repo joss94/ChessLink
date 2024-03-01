@@ -23,33 +23,34 @@ def make_square_image(img):
         borders[[0,1]] = int(0.5 * (img.shape[1] - img.shape[0]))
     elif ar > 1.01:
         borders[[2,3]] = int(0.5 * (img.shape[0] / img.shape[1]))
+    borders += int(0.2 * img.shape[0])
     output = cv2.copyMakeBorder(img, borders[0], borders[1], borders[2], borders[3], cv2.BORDER_CONSTANT, value = (0,0,0))
     return output
 
 def crop_board(img, corners):
 
     h, w, _ = img.shape
-
     [X, Y, W, H] = cv2.boundingRect(corners)
+
     X -= 0.1 * W
     Y -= 0.1 * H
     W *= 1.2
     H *= 1.2
-    X = max(0, X)
-    Y = max(0, Y)
-    W = min(W, w - X - 1)
-    H = min(H, h - Y - 1)
+    # X = max(0, X)
+    # Y = max(0, Y)
+    # W = min(W, w - X - 1)
+    # H = min(H, h - Y - 1)
     ar = H/W
     if ar < 0.99:
         dh = W - H
-        H = min(H + dh, h - Y - 1)
+        H += dh
         Y = max(0, Y - 0.5 * dh)
     elif ar > 1.01:
         dw = H - W
-        W = min(W + dw,  w - X - 1)
+        W += dw
         X =  max(0, X - 0.5 * dw)
 
-    return img[int(Y):int(Y+H),int(X):int(X+W)], [X, Y, W, H]
+    return img[int(Y):int(Y) + int(H),int(X):int(X)+int(W)], [int(X), int(Y), int(W), int(H)]
 
 def align_image(img, board_pos, output_size=640):
     board_size = 0.8
@@ -84,7 +85,6 @@ def align_image(img, board_pos, output_size=640):
 
     output = cv2.warpPerspective(img, mat, (output_size, output_size))
     newPts = cv2.perspectiveTransform(np.array([src_pts]), mat)
-    print(newPts[0][41])
 
     for i, dst_pt in enumerate(newPts[0]):
         cv2.putText(
@@ -164,7 +164,7 @@ def draw_squares_on_image(image, squares_corners):
 
 def draw_results_on_image(image, results):
 
-    if results["info"] == "ok":
+    if results["status"] == "OK":
 
         draw_squares_on_image(image, results["squares"])
         draw_detections_on_image(image, results["pieces"])
@@ -177,7 +177,7 @@ def draw_results_on_image(image, results):
         h = image.shape[0]
         cv2.putText(
             image,
-            results["info"],
+            results["status"],
             org = (0,40),
             fontFace=cv2.FONT_HERSHEY_SIMPLEX,
             fontScale=h/500,

@@ -105,7 +105,7 @@ def board_to_string(board, add_moves=True):
             string += p.symbol() if p is not None else '.'
             string += ' ' if col <7 else '|\n'
     string += '   --------------- \n'
-    string += "   a b c d e f g h\n"
+    string += '   a b c d e f g h \n'
     return string
 
 def boards_to_string(boards):

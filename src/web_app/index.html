@@ -12,14 +12,23 @@
 
     <div id="message"></div>
     <select id="stream_type" name="Stream type" onchange="onStreamTypeChanged()">
-        <option value="RTSP" selected>RTSP</option>
-        <option value="Camera">Camera</option>
+        <option value="URL">URL</option>
+        <option value="Camera" selected>Camera</option>
         <option value="File">File</option>
     </select>
 
-    <input type="text" id="rtsp_url" name="URL" size="10"/>
+    <input type="text" id="stream_url" name="URL" size="10" value="https://192.168.1.127:8443/92c6787ef578834db7aca99632e13a35/mjpeg/GQLByKaPQ3/lSwKx1Gqwi"/>
+
+
+    <div id="video-container">
+        <video id="live" width="100%" height="100%" src="https://192.168.1.127:8443/92c6787ef578834db7aca99632e13a35/hls/GQLByKaPQ3/lSwKx1Gqwi/s.m3u8" autoplay></img>
+    </div>
 
     <button class="positive" id="start" onclick="onStartClicked()">Start</button>
+
+
+
+
 
     <script src="js/web_app.js"></script>
 

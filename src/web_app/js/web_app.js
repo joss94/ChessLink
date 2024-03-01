@@ -3,7 +3,7 @@
 const startBtn = document.querySelector('button#start');
 const messageElement = document.querySelector('#message');
 const stream_selector = document.querySelector("select#stream_type");
-const rtsp_url = document.querySelector("input#rtsp_url");
+const stream_url = document.querySelector("input#stream_url");
 
 initializeApp();
 
@@ -39,7 +39,11 @@ function startSession() {
 
                 let stream_type = stream_selector.options[stream_selector.selectedIndex].text;
 
-                url = getURL() + "/session?" + "id=" + session_id + "&stream=" + stream_type;
+                let url = getURL() + "/session?" + "id=" + session_id + "&stream=" + stream_type;
+
+                if (stream_type == "URL") {
+                    url += "&stream_url=" + stream_url.value
+                }
 
                 window.location.href = url
                 // window.location.href = getURL() + "/session";
@@ -69,13 +73,13 @@ function onStreamTypeChanged() {
     var streamType = stream_selector.options[stream_selector.selectedIndex].text;
     console.log(streamType);
     if (streamType == "Camera") {
-        rtsp_url.style.display = "none";
+        stream_url.style.display = "none";
     }
-    else if (streamType == "RTSP") {
-        rtsp_url.style.display = "block";
+    else if (streamType == "URL") {
+        stream_url.style.display = "block";
     }
     else if (streamType == "File") {
-        rtsp_url.style.display = "none";
+        stream_url.style.display = "none";
     }
 }
 
