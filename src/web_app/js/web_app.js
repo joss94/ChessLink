@@ -4,6 +4,7 @@ const startBtn = document.querySelector('button#start');
 const messageElement = document.querySelector('#message');
 const stream_selector = document.querySelector("select#stream_type");
 const stream_url = document.querySelector("input#stream_url");
+const video_file = document.querySelector("input#video_file");
 
 initializeApp();
 
@@ -44,6 +45,9 @@ function startSession() {
                 if (stream_type == "URL") {
                     url += "&stream_url=" + stream_url.value
                 }
+                if (stream_type == "File") {
+                    url += "&video_file=" + video_file.value
+                }
 
                 window.location.href = url
                 // window.location.href = getURL() + "/session";
@@ -74,12 +78,15 @@ function onStreamTypeChanged() {
     console.log(streamType);
     if (streamType == "Camera") {
         stream_url.style.display = "none";
+        video_file.style.display = "none";
     }
     else if (streamType == "URL") {
         stream_url.style.display = "block";
+        video_file.style.display = "none";
     }
     else if (streamType == "File") {
         stream_url.style.display = "none";
+        video_file.style.display = "block";
     }
 }
 

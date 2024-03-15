@@ -253,7 +253,7 @@ class ChessboardParser():
 
     def process_images(self, images):
 
-        squared_images = [make_square_image(img) for img in images]
+        squared_images = [make_square_image(img)[0] for img in images]
 
         # Run segmentation and detection
         t = time.time()

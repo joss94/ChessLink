@@ -184,7 +184,7 @@ def gen_yolo_annot(path, dst_dir, train_split, val_split, class_names, diff_colo
     board_poly[:,1] += h
     board_poly = np.int32(board_poly)
 
-    img_cropped, [X, Y, W, H], _ = crop_board(img, board_poly)
+    img_cropped, [X, Y, W, H] = crop_board(img, board_poly)
 
     annots_txt = ""
 
@@ -279,10 +279,9 @@ def convert_roboflow(src_directory="", dst_directory=""):
 
             board_poly[:,0] *= w
             board_poly[:,1] *= h
-            # board_poly[:,1] += h
             board_poly = np.int32(board_poly)
 
-            img_cropped, [X, Y, W, H], _ = crop_board(img, board_poly)
+            img_cropped, [X, Y, W, H] = crop_board(img, board_poly)
 
             annots_txt = ""
             for i, line in enumerate(label_lines):
@@ -298,15 +297,15 @@ def convert_roboflow(src_directory="", dst_directory=""):
                     coords[1] + 0.5 * coords[3],
                 ])
 
+                box[0] = max(0.0, (box[0] * w - X) / W)
+                box[2] = min(1.0, (box[2] * w - X) / W)
+                box[1] = max(0.0, (box[1] * h - Y) / H)
+                box[3] = min(1.0, (box[3] * h - Y) / H)
+
                 box = np.clip(box, 0.0, 1.0)
 
                 if box[2] <= box[0] or box[3] <= box[1]:
                     continue
-
-                box[0] = (box[0] * w - X) / W
-                box[2] = (box[2] * w - X) / W
-                box[1] = (box[1] * h - Y) / H
-                box[3] = (box[3] * h - Y) / H
 
                 center_x = 0.5 * (box[0] + box[2])
                 center_y = 0.5 * (box[1] + box[3])
@@ -570,7 +569,7 @@ def gen_yolo_annots_seg_with_pieces(
         board_poly[:,1] *= h
         board_poly = np.int32(board_poly)
 
-        img_cropped, [X, Y, W, H], _ = crop_board(img, board_poly)
+        img_cropped, [X, Y, W, H] = crop_board(img, board_poly)
 
         img = cv2.imread(path)
         img_size = img.shape[0]
@@ -667,7 +666,7 @@ def chessred_2_yolo(
         img = cv2.imread(path)
         h, w, _ = img.shape
 
-        img_cropped, [X, Y, W, H], _ = crop_board(img, corners)
+        img_cropped, [X, Y, W, H] = crop_board(img, corners)
 
         pieces = [p for p in annots["annotations"]["pieces"] if p["image_id"] == img_id]
 
@@ -690,20 +689,16 @@ def chessred_2_yolo(
             annots_txt += f'{p_class} {center_x} {center_y} {width} {height}\n'
 
         # shutil.copyfile(path, str(img_path))
-        # cv2.imwrite(str(img_path), img_cropped)
+        cv2.imwrite(str(img_path), img_cropped)
 
         with open(annots_path, 'w+') as f:
             f.write(annots_txt)
 
-def gen_pieces_dataset(src_dir="/workspace/ChessLink/data/dataset_test_CL23", dst_dir="/workspace/ChessLink/data/dataset_pieces", target_size=(64, 64)):
+def gen_pieces_dataset_from_yolo(src_dir="/workspace/ChessLink/data/dataset_test_CL23", dst_dir="/workspace/ChessLink/data/dataset_pieces", target_size=(64, 64)):
     os.makedirs(dst_dir, exist_ok=True)
     os.makedirs(Path(dst_dir) / "train", exist_ok=True)
-    os.makedirs(Path(dst_dir) / "val", exist_ok=True)
+    os.makedirs(Path(dst_dir) / "valid", exist_ok=True)
     os.makedirs(Path(dst_dir) / "test", exist_ok=True)
-
-    path=src_dir + '/*.jpg'
-    image_file_paths=glob.glob(path,recursive=True)
-    image_file_paths = [img for img in image_file_paths if "mask" not in img]
 
     class_names = ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']
     for label in class_names:
@@ -711,39 +706,49 @@ def gen_pieces_dataset(src_dir="/workspace/ChessLink/data/dataset_test_CL23", ds
         os.makedirs(Path(dst_dir) / "val" / label, exist_ok=True)
         os.makedirs(Path(dst_dir) / "test" / label, exist_ok=True)
 
-    for path in tqdm(image_file_paths):
+    dataset = {
+        'train': glob.glob(src_dir + '/train/images/*.jpg',recursive=True),
+        'val': glob.glob(src_dir + '/val/images/*.jpg',recursive=True),
+        'test': glob.glob(src_dir + '/test/images/*.jpg',recursive=True),
+    }
 
-        r =  np.random.rand()
-        folder = "test" if r > 0.95 else ("val" if r > 0.8 else "train")
+    for datatype, image_file_paths in dataset.items():
+        for path in tqdm(image_file_paths):
 
-        image=cv2.imread(path)
-        with open(path.replace(".jpg",".json")) as f:
-            annots =  json.loads(f.read())
+            image=cv2.imread(path)
+            with open(path.replace("images","labels").replace(".jpg",".txt")) as f:
+                annots =  f.readlines()
 
-        for piece in annots["pieces"]:
+            for annot in annots:
 
-            bbox = np.array(piece["bbox"])
+                elements = annot.split(" ")
+                label = class_names[int(elements[0])]
 
-            if bbox[0] <= 0 or bbox[2] >= 1.0 or bbox[1] <= 0 or bbox[3] >= 1.0:
-                continue
+                c_x = float(elements[1])
+                c_y = float(elements[2])
+                w = float(elements[3])
+                h = float(elements[4])
 
-            # bbox[1] = 1.0 - bbox[1]
-            # bbox[3] = 1.0 - bbox[3]
+                bbox = [c_x - 0.5 * w, c_y - 0.5 * h, c_x + 0.5 * w, c_y + 0.5 * h]
 
-            bbox = np.clip(bbox, 0.0, 1.0)
+                bbox = np.clip(bbox, 0.0, 1.0)
 
-            w = image.shape[1]
-            h = image.shape[0]
+                if bbox[0] >=1.0 or bbox[1] >= 1.0 or bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+                    continue
 
-            croppedImg = image[int(bbox[3]*h):int(bbox[1]*h), int(bbox[0]*w):int(bbox[2]*w)]
-            # croppedImg = cv2.resize(make_square_image(croppedImg), (64,64))
-            croppedImg = make_square_image(croppedImg)
+                w = image.shape[1]
+                h = image.shape[0]
 
-            label = piece["piece"]
+                croppedImg = image[int(bbox[1]*h):int(bbox[3]*h), int(bbox[0]*w):int(bbox[2]*w)]
 
-            filename = f'{uuid.uuid1()}.jpg'
-            cv2.imwrite(str(Path(dst_dir) / folder / label / filename), croppedImg)
-            # label = self.class_names.index(piece["piece"])
+                if croppedImg.shape[0] <= 0 or croppedImg.shape[1] <= 0:
+                    continue
+
+                # croppedImg = cv2.resize(make_square_image(croppedImg), (64,64))
+                croppedImg, _ = make_square_image(croppedImg)
+
+                filename = f'{uuid.uuid1()}.jpg'
+                cv2.imwrite(str(Path(dst_dir) / datatype / label / filename), croppedImg)
 
 def remap_classes(
     dataset_directory="",
