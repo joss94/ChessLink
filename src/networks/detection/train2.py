@@ -8,9 +8,13 @@ DATASET = "/workspace/ChessLink/data/dataset_yolo_merge_w_real_5k/data.yaml"
 # DATASET = '/workspace/ChessLink/data/CL.v6i.yolov8/data.yaml'
 
 # Load a model
-model = YOLO("yolov8m.pt")  # load a pretrained model (recommended for training)
-# model = YOLO('/workspace/ChessLink/runs/detect/real_mix7/weights/last.pt')  # load a pretrained model (recommended for training)
+if TRAIN and not RESUME:
+    model = YOLO('yolov8m.pt')  # load a pretrained model (recommended for training)
+else:
+    model = YOLO(f'/workspace/ChessLink/runs/detect/{NAME}/weights/last.pt')  # load a pretrained model (recommended for training)
 # model = YOLO('/workspace/CL/runs/train/last.pt')  # load a pretrained model (recommended for training)
+
+
 
 # Train the model with 2 GPUs
 # results = model.train(data='/workspace/ChessLink/data/dataset_yolo_9/data.yaml', epochs=1000, optimizer="Adam", lr0=1e-4, lrf=1e-2, imgsz=640, device=[3])
@@ -19,29 +23,47 @@ if TRAIN:
         name=NAME,
         resume=RESUME,
         data=DATASET,
-        # dropout=0.1,
-        epochs=500,
-        imgsz=640,
         device=DEVICE,
+
+        # Training params
+        # ---------------------
+        batch=32,
+        patience=1000,
+        epochs=2000,
+        imgsz=640,
+        # dropout=0.1,
         # lr0=1e-3,
         # optimizer="SGD",
-        mosaic=0.0,
+        # cls = 0.1,
+        # box=20,
+        # dfl=10,
+        # warmup_epochs=30,
+        # fraction=0.05,
+
+        # Image transforms
+        # ---------------------
+        translate=0.0,
         scale=0.0,
+        degrees=15,
+        perspective=0.0005,
+        shear=10,
+        mosaic=0.0,
+        fliplr=0.5,
+        flipud=0.0,
+
+        # Pixel transforms
+        # ---------------------
         # hsv_h=0.0,
         # hsv_v=0.0,
         # hsv_s=0.0,
-        gaussian_noise=0.3,
-        jpg_quality=0.7,
-        translate=0.0,
-        degrees=5,
-        # cls = 0.1,
-        # box=20,
-        dfl=10,
-        # warmup_epochs=30,
-        batch=16,
-        augment=True,
-        patience=1000,
-        # fraction=0.05,
+        #gaussian_noise= 0.3,
+        #jpg_quality= 0.7,
+
+        # Objects transforms
+        # ---------------------
+        copy_paste = 0.5,
+
+
         # mixup = 0.3
     )
 

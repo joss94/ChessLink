@@ -1,20 +1,11 @@
-import glob
-import os
-import shutil
 import cv2
 import numpy as np
-import json
-from pathlib import Path
 import chess.svg
 from cairosvg import svg2png
 from PIL import Image
 from io import BytesIO
 
-from tqdm import tqdm
-
 import chess
-
-import uuid
 
 
 def make_square_image(img):
@@ -84,67 +75,6 @@ def crop_board(img, corners):
     out, borders = make_square_image(cropped)
 
     return out, [X - borders[2], Y - borders[0], out.shape[1], out.shape[0]]
-
-
-def align_image(img, board_pos, output_size=640):
-    board_size = 0.8
-    dst_pts = []
-    for c in range(9):
-        for r in range(9):
-            x = 0.5 + (c - 4) * board_size / 16
-            y = 0.5 + (r - 4) * board_size / 16
-            dst_pts.append([x * output_size, y * output_size])
-    dst_pts = np.int32(dst_pts)
-
-    src_pts = np.array(board_pos)
-    src_pts[:, 1] *= -1
-    src_pts[:, 1] += 1
-    src_pts[:, 0] *= img.shape[1]
-    src_pts[:, 1] *= img.shape[0]
-
-    for i, pt in enumerate(src_pts):
-        cv2.putText(
-            img,
-            # f'{pieces[i]["score"]:.2f}',
-            f"{i}",
-            org=np.int32(pt),
-            fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-            fontScale=0.2 * img.shape[0] / 500,
-            color=(255, 255, 255),
-            thickness=max(1, int(img.shape[0] / 800)),
-        )
-
-    H = cv2.findHomography(src_pts, dst_pts)
-    mat = H[0]
-
-    output = cv2.warpPerspective(img, mat, (output_size, output_size))
-    newPts = cv2.perspectiveTransform(np.array([src_pts]), mat)
-
-    for i, dst_pt in enumerate(newPts[0]):
-        cv2.putText(
-            output,
-            # f'{pieces[i]["score"]:.2f}',
-            f"{i}",
-            org=np.int32(dst_pt),
-            fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-            fontScale=0.2 * img.shape[0] / 500,
-            color=(0, 0, 255),
-            thickness=max(1, int(img.shape[0] / 800)),
-        )
-
-    for i, dst_pt in enumerate(dst_pts):
-        cv2.putText(
-            output,
-            # f'{pieces[i]["score"]:.2f}',
-            f"{i}",
-            org=dst_pt,
-            fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-            fontScale=0.2 * img.shape[0] / 500,
-            color=(0, 255, 0),
-            thickness=max(1, int(img.shape[0] / 800)),
-        )
-
-    return output
 
 
 def draw_detections_on_image(image, pieces):
@@ -230,15 +160,3 @@ def draw_results_on_image(image, results):
             thickness=max(1, int(h / 200)),
         )
 
-
-# merge(["/workspace/CL/dataset_augment", "/workspace/CL/dataset3"], "/workspace/CL/dataset_merge")
-# gen_yolo_annots_seg()
-# gen_yolo_annots()
-# split()
-# prepare_dataset("/workspace/CL/data/dataset5", "/workspace/CL/data/dataset5_preprocessed")
-# gen_masks()
-# gen_pieces_dataset()
-# extract_kings_queens()
-
-# files = glob.glob("/workspace/ChessLink/data/dataset_test_CL7/*.jpg")
-# visualize_annots(files[2])

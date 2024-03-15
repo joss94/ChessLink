@@ -5,18 +5,14 @@ import cv2
 import numpy as np
 import json
 from pathlib import Path
-import random
 import re
 
-from multiprocessing import Pool
 
 from tqdm import tqdm
 
 import uuid
 
 from utils.image_utils import make_square_image, crop_board
-
-import hashlib
 
 
 def clean(dataset_path):
@@ -67,7 +63,7 @@ def merge_yolo(datasets, dst_dir):
 
         images = glob.glob(dataset + "/train/images/*.jpg")
         if "yolo_merge" in dataset:
-            images = images[:5000]
+            images = images[:10000]
 
         for image_path in tqdm(images):
             label_path = image_path.replace(".jpg", ".txt").replace("images", "labels")
@@ -79,9 +75,9 @@ def merge_yolo(datasets, dst_dir):
                 shutil.copy(label_path, str(dst_label_path))
 
     with open(Path(dst_dir) / "data.yaml", "w+") as f:
-        f.write("train: ../train/images\n")
-        f.write("val: ../../chessred_test_yolo/images\n")
-        f.write("test: ../../chessred_test_yolo/images\n")
+        f.write(f"train: {str(Path(dst_dir)/"train"/"images")}\n")
+        f.write("val: /workspace/ChessLink/data/chessred_test_yolo/val/images\n")
+        f.write("test: /workspace/ChessLink/data/chessred_test_yolo/val/images\n")
         f.write(f"nc: 12\n")
         f.write(
             f"names: ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']\n"
@@ -963,7 +959,7 @@ def remap_classes(
 #     overwrite=False
 # )
 
-# gen_pieces_dataset()
+# gen_pieces_dataset_from_yolo(src_dir="/workspace/ChessLink/data/dataset_yolo_merge_w_10kreal_2", dst_dir="/workspace/ChessLink/data/dataset_pieces", target_size=(64, 64))
 
 # gen_pieces_dataset()
 # extract_kings_queens()
@@ -976,16 +972,13 @@ def remap_classes(
 
 # visualize_annots_yolo("/workspace/ChessLink/data/dataset_yolo_23")
 
-# convert_roboflow(
-#     "/workspace/ChessLink/data/CL.v9i.yolov8_original",
-#     "/workspace/ChessLink/data/CL.v9i.yolov8",
-# )
-merge_yolo(
-    [
-        "/workspace/ChessLink/data/dataset_yolo_merge",
-        "/workspace/ChessLink/data/CL.v9i.yolov8",
-    ],
-    "/workspace/ChessLink/data/dataset_yolo_merge_w_real_5k",
+convert_roboflow(
+    "/workspace/ChessLink/data/CL.v11i.yolov8_original",
+    "/workspace/ChessLink/data/CL.v11i.yolov8",
 )
+merge_yolo([
+        "/workspace/ChessLink/data/dataset_yolo_merge",
+        "/workspace/ChessLink/data/CL.v11i.yolov8"],
+    "/workspace/ChessLink/data/dataset_yolo_merge_w_10kreal")
 
 # remap_classes("/workspace/ChessLink/data/dataset_yolo_merge_remapped")
