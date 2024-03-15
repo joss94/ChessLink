@@ -159,4 +159,3 @@ def draw_results_on_image(image, results):
             color=(0, 255, 0),
             thickness=max(1, int(h / 200)),
         )
-

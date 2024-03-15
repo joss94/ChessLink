@@ -9,11 +9,12 @@ DATASET = "/workspace/ChessLink/data/dataset_yolo_merge_w_real_5k/data.yaml"
 
 # Load a model
 if TRAIN and not RESUME:
-    model = YOLO('yolov8m.pt')  # load a pretrained model (recommended for training)
+    model = YOLO("yolov8m.pt")  # load a pretrained model (recommended for training)
 else:
-    model = YOLO(f'/workspace/ChessLink/runs/detect/{NAME}/weights/last.pt')  # load a pretrained model (recommended for training)
+    model = YOLO(
+        f"/workspace/ChessLink/runs/detect/{NAME}/weights/last.pt"
+    )  # load a pretrained model (recommended for training)
 # model = YOLO('/workspace/CL/runs/train/last.pt')  # load a pretrained model (recommended for training)
-
 
 
 # Train the model with 2 GPUs
@@ -24,7 +25,6 @@ if TRAIN:
         resume=RESUME,
         data=DATASET,
         device=DEVICE,
-
         # Training params
         # ---------------------
         batch=32,
@@ -39,7 +39,6 @@ if TRAIN:
         # dfl=10,
         # warmup_epochs=30,
         # fraction=0.05,
-
         # Image transforms
         # ---------------------
         translate=0.0,
@@ -50,20 +49,16 @@ if TRAIN:
         mosaic=0.0,
         fliplr=0.5,
         flipud=0.0,
-
         # Pixel transforms
         # ---------------------
         # hsv_h=0.0,
         # hsv_v=0.0,
         # hsv_s=0.0,
-        #gaussian_noise= 0.3,
-        #jpg_quality= 0.7,
-
+        # gaussian_noise= 0.3,
+        # jpg_quality= 0.7,
         # Objects transforms
         # ---------------------
-        copy_paste = 0.5,
-
-
+        copy_paste=0.5,
         # mixup = 0.3
     )
 
