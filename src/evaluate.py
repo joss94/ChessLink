@@ -7,10 +7,11 @@ import chess
 from utils.image_utils import draw_results_on_image
 from app.chessboard_parser import ChessboardParser
 
-DEVICE=3
-BATCH_SIZE=64
+DEVICE = 3
+BATCH_SIZE = 64
 
-labels=["P", "R", "N", "B", "Q", "K", "p", "r", "n", "b", "q", "k"]
+labels = ["P", "R", "N", "B", "Q", "K", "p", "r", "n", "b", "q", "k"]
+
 
 def rotate_board(board):
     new_board = chess.Board.empty()
@@ -19,9 +20,10 @@ def rotate_board(board):
             src_square = chess.square(c, r)
             piece = board.piece_at(src_square)
             if piece:
-                dst_square = chess.square(r, 7-c)
+                dst_square = chess.square(r, 7 - c)
                 new_board.set_piece_at(dst_square, piece)
     return new_board
+
 
 if __name__ == "__main__":
 
@@ -34,7 +36,7 @@ if __name__ == "__main__":
 
     perfect = 0
     total = 0
-    errors={}
+    errors = {}
 
     index = 0
     print(" ")
@@ -48,8 +50,14 @@ if __name__ == "__main__":
 
             gt_board = chess.Board.empty()
             image_path = images_paths[k]
-            annot = [a for a in annots["images"] if image_path.endswith(a["file_name"])][0]
-            gt_pieces = [a for a in annots["annotations"]["pieces"] if a["image_id"] == annot["id"]]
+            annot = [
+                a for a in annots["images"] if image_path.endswith(a["file_name"])
+            ][0]
+            gt_pieces = [
+                a
+                for a in annots["annotations"]["pieces"]
+                if a["image_id"] == annot["id"]
+            ]
             for piece in gt_pieces:
                 s = chess.SQUARE_NAMES.index(piece["chessboard_position"])
                 p = chess.Piece.from_symbol(labels[piece["category_id"]])
@@ -72,29 +80,35 @@ if __name__ == "__main__":
                 for i in range(4):
                     board = rotate_board(board)
 
-                    str1 = str(gt_board)#.replace("k", "q").replace("K", "Q")
-                    str2 = str(board)#.replace("k", "q").replace("K", "Q")
+                    str1 = str(gt_board)  # .replace("k", "q").replace("K", "Q")
+                    str2 = str(board)  # .replace("k", "q").replace("K", "Q")
 
-                    diffs = [f"{a}-{b}" for a, b in zip(str1, str2) if a != b]# and a.lower() != "k" and b.lower() != "k"]
+                    diffs = [
+                        f"{a}-{b}" for a, b in zip(str1, str2) if a != b
+                    ]  # and a.lower() != "k" and b.lower() != "k"]
 
                     count = len(diffs)
                     if count < min_count:
                         min_count = count
                         min_diffs = diffs
-                    if count==0:
-                        perfect+=1
+                    if count == 0:
+                        perfect += 1
                         break
 
                 if "k-q" in min_diffs:
                     cv2.imwrite(f"./output/images/{index+k}.jpg", images[k])
                 for diff in min_diffs:
-                    key = f'{diff[0].lower()}{diff[2].lower()}'
+                    key = f"{diff[0].lower()}{diff[2].lower()}"
                     errors[key] = errors.get(key, 0) + 1
 
             total += 1
-            filtered_errors = list(filter(lambda x:x[1]>10, sorted(errors.items(), key=lambda x:-x[1])))
+            filtered_errors = list(
+                filter(lambda x: x[1] > 10, sorted(errors.items(), key=lambda x: -x[1]))
+            )
 
-        print(f'\033[F{index + BATCH_SIZE}/{len(images_paths)} {int(perfect/total*100)}% {filtered_errors}')
+        print(
+            f"\033[F{index + BATCH_SIZE}/{len(images_paths)} {int(perfect/total*100)}% {filtered_errors}"
+        )
 
         # if results["status"] == "ok" and min_count > 0:
         #     image = cv2.imread(image_path)
@@ -104,9 +118,9 @@ if __name__ == "__main__":
 
         # if not match:
 
-            # print(board)
-            # print("----")
-            # print(gt_board)
+        # print(board)
+        # print("----")
+        # print(gt_board)
 
         # print(board)
 

@@ -1,6 +1,7 @@
 import os
 import cv2
 import numpy as np
+
 # import mediapipe as mp
 
 import time
@@ -23,18 +24,18 @@ import onnxruntime as ort
 # from networks.detection.train import DetectNet
 from utils.image_utils import make_square_image, crop_board
 
-DETECT_WEIGHTS = '/src/model/detection/yolo/weights.onnx'
-SEGMENT_WEIGHTS = '/src/model/segment/yolo/weights.onnx'
-HANDS_WEIGHTS = '/src/model/yolov8n-seg.onnx'
+DETECT_WEIGHTS = "/src/model/detection/yolo/weights.onnx"
+SEGMENT_WEIGHTS = "/src/model/segment/yolo/weights.onnx"
+HANDS_WEIGHTS = "/src/model/yolov8n-seg.onnx"
 
 CONF = 0.5
 
-class ChessboardParser():
 
+class ChessboardParser:
     def __init__(self, detect_weights=DETECT_WEIGHTS, segment_weights=SEGMENT_WEIGHTS):
-        self.class_names = ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']
+        self.class_names = ["p", "n", "b", "r", "q", "k", "P", "N", "B", "R", "Q", "K"]
 
-        self.device="cpu"
+        self.device = "cpu"
 
         # self.segment_net = YOLO(segment_weights)
         self.hand_net = YOLOv8Seg(HANDS_WEIGHTS)
@@ -61,29 +62,31 @@ class ChessboardParser():
         h = image.shape[0]
         w = image.shape[1]
 
-        contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, hierarchy = cv2.findContours(
+            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
         if len(contours) == 0:
             print("DID NOT FIND ANY CONTOUR")
             return None
 
-        c = max(contours, key = cv2.contourArea)
+        c = max(contours, key=cv2.contourArea)
 
         if len(c) < 4:
             print("FOUND CONTOUR WITH LENGTH < 4")
             return None
 
         # find the biggest countour (c) by the area
-        c = max(contours, key = cv2.contourArea)
+        c = max(contours, key=cv2.contourArea)
 
         # Simplify the contour to a 4-sides polygon.
         eps_factor = 0.002
-        epsilon = eps_factor*cv2.arcLength(c,True)
-        approx = cv2.approxPolyDP(c,epsilon,True)
+        epsilon = eps_factor * cv2.arcLength(c, True)
+        approx = cv2.approxPolyDP(c, epsilon, True)
 
         while len(approx) > 4:
             eps_factor = eps_factor + 0.002
-            epsilon = eps_factor*cv2.arcLength(approx,True)
-            approx = cv2.approxPolyDP(approx,epsilon,True)
+            epsilon = eps_factor * cv2.arcLength(approx, True)
+            approx = cv2.approxPolyDP(approx, epsilon, True)
             if eps_factor >= 0.05:
                 print(f"eps factor too high")
                 return None
@@ -92,27 +95,33 @@ class ChessboardParser():
             print("FAILED TO APPROXIMATE CONTOUR WITH 4 POINTS")
             return None
 
-        approx = np.reshape(approx, (4,2))
+        approx = np.reshape(approx, (4, 2))
 
         # ------------------------------------------------------------------------------------------------
         # This polygon is not very precise because
         # the simplification does not minimize the error. We can find better lines by using this
         # polygon approximation to group the contour points into 4 sides, and then interpolate
         # the 2D data points of each side to an optimized line equation
-        #------------------------------------------------------------------------------------------------
+        # ------------------------------------------------------------------------------------------------
 
         # Make sure the polygon coords are clockwise
         center = np.mean(approx, axis=0)
-        approx = sorted(approx, key=lambda a: -1.0 * (np.arctan2(a[0] - center[0], a[1] - center[1]) + 2*3.1415))
+        approx = sorted(
+            approx,
+            key=lambda a: -1.0
+            * (np.arctan2(a[0] - center[0], a[1] - center[1]) + 2 * 3.1415),
+        )
         approx = np.roll(approx, 1, axis=0)
 
         # Cluster the initial contour point to 4 lines
-        lines = np.array([
-            [approx[0], approx[1]],
-            [approx[1], approx[2]],
-            [approx[2], approx[3]],
-            [approx[3], approx[0]],
-        ])
+        lines = np.array(
+            [
+                [approx[0], approx[1]],
+                [approx[1], approx[2]],
+                [approx[2], approx[3]],
+                [approx[3], approx[0]],
+            ]
+        )
 
         pts_by_line = [[], [], [], []]
         for pt in c:
@@ -120,7 +129,9 @@ class ChessboardParser():
             min_index = -1
             min_dist = -1
             for i, line in enumerate(lines):
-                d = np.linalg.norm(np.cross(line[1]-line[0], line[0]-pt))/np.linalg.norm(line[1]-line[0])
+                d = np.linalg.norm(
+                    np.cross(line[1] - line[0], line[0] - pt)
+                ) / np.linalg.norm(line[1] - line[0])
                 if d < min_dist or min_dist < 0:
                     min_index = i
                     min_dist = d
@@ -134,36 +145,51 @@ class ChessboardParser():
             # If one of the lines has less than 2 points, extraction will fail
             if cluster.shape[0] < 2:
                 return None
-            coeffs = np.polyfit(cluster[:,0],cluster[:,1],1)
+            coeffs = np.polyfit(cluster[:, 0], cluster[:, 1], 1)
             lines_coeffs.append(coeffs)
 
         # Compute lines intersections to get the corners
         def seg_intersect(coeffs1, coeffs2):
             x = (coeffs2[1] - coeffs1[1]) / (coeffs1[0] - coeffs2[0])
-            y = -(coeffs1[1] * coeffs2[0] - coeffs2[1] * coeffs1[0]) / (coeffs1[0] - coeffs2[0])
+            y = -(coeffs1[1] * coeffs2[0] - coeffs2[1] * coeffs1[0]) / (
+                coeffs1[0] - coeffs2[0]
+            )
             return [x, y]
 
-        real_corners = [seg_intersect(lines_coeffs[i], lines_coeffs[(i+1)%4]) for i in range(4)]
+        real_corners = [
+            seg_intersect(lines_coeffs[i], lines_coeffs[(i + 1) % 4]) for i in range(4)
+        ]
         real_corners = np.array(real_corners)
 
         square_size = min(w, h)
         chessboard_squares = []
         for r in range(9):
             for c in range(9):
-                pt = np.array([w/2+r-5, h/2+c-5]).astype(np.float64) * square_size/8
+                pt = (
+                    np.array([w / 2 + r - 5, h / 2 + c - 5]).astype(np.float64)
+                    * square_size
+                    / 8
+                )
                 chessboard_squares.append(pt)
         chessboard_squares = np.array(chessboard_squares, np.int32)
 
-        chessboard_corners = np.array([
-            chessboard_squares[72],
-            chessboard_squares[80],
-            chessboard_squares[8],
-            chessboard_squares[0],
-        ], np.int32)
+        chessboard_corners = np.array(
+            [
+                chessboard_squares[72],
+                chessboard_squares[80],
+                chessboard_squares[8],
+                chessboard_squares[0],
+            ],
+            np.int32,
+        )
 
-        M, _ = cv2.findHomography(chessboard_corners.reshape(-1,1,2), real_corners.reshape(-1,1,2))
+        M, _ = cv2.findHomography(
+            chessboard_corners.reshape(-1, 1, 2), real_corners.reshape(-1, 1, 2)
+        )
 
-        real_squares = cv2.perspectiveTransform(np.float32(chessboard_squares).reshape(-1,1,2), M).reshape(-1,2)
+        real_squares = cv2.perspectiveTransform(
+            np.float32(chessboard_squares).reshape(-1, 1, 2), M
+        ).reshape(-1, 2)
 
         real_squares_corners = []
         for r in range(8):
@@ -173,25 +199,30 @@ class ChessboardParser():
                 c3 = c1 + 9
                 c4 = c3 + 1
 
-                real_squares_corners.append(np.array([real_squares[c] for c in [c1, c2, c4, c3]], np.int32))
+                real_squares_corners.append(
+                    np.array([real_squares[c] for c in [c1, c2, c4, c3]], np.int32)
+                )
         real_squares_corners = np.int32(real_squares_corners)
 
+        board_poly = np.array(
+            [
+                real_squares_corners[7][1],
+                real_squares_corners[63][2],
+                real_squares_corners[56][3],
+                real_squares_corners[0][0],
+            ]
+        )
 
-        board_poly = np.array([
-            real_squares_corners[7][1],
-            real_squares_corners[63][2],
-            real_squares_corners[56][3],
-            real_squares_corners[0][0]]
-            )
-
-        board_mask = cv2.fillPoly(np.zeros(mask.shape, np.uint8), [board_poly], color=255)
+        board_mask = cv2.fillPoly(
+            np.zeros(mask.shape, np.uint8), [board_poly], color=255
+        )
         board_mask = cv2.bitwise_xor(mask, board_mask)
 
         mask_overlay = np.sum(board_mask.reshape(-1)) / np.sum(mask.reshape(-1))
 
         real_squares_corners = np.float32(real_squares_corners)
-        real_squares_corners[:,:,0] *= w / mask.shape[1]
-        real_squares_corners[:,:,1] *= h / mask.shape[0]
+        real_squares_corners[:, :, 0] *= w / mask.shape[1]
+        real_squares_corners[:, :, 1] *= h / mask.shape[0]
         real_squares_corners = np.int32(real_squares_corners)
 
         # if mask_overlay > 0.1:
@@ -214,7 +245,8 @@ class ChessboardParser():
                 "score": -1.0,
                 "box": [],
                 "center": real_square_centers[i],
-            } for i in range(64)
+            }
+            for i in range(64)
         ]
 
         squares_polygons = [Polygon(squares_corners[sq]) for sq in range(64)]
@@ -228,20 +260,27 @@ class ChessboardParser():
             # Build a square polygon with same width as box, bottom-aligned with the box
             # This polygon represents the "foot" of the piece, discarding the top part which
             # can be superimposed to other squares
-            box_base = np.int32([
-                [box[0]*w, (box[3] - 0.5 * (box[2] - box[0]))*h],
-                [box[2]*w, (box[3] - 0.5 * (box[2] - box[0]))*h],
-                [box[2]*w, box[3]*h],
-                [box[0]*w, box[3]*h]
-            ])
+            box_base = np.int32(
+                [
+                    [box[0] * w, (box[3] - 0.5 * (box[2] - box[0])) * h],
+                    [box[2] * w, (box[3] - 0.5 * (box[2] - box[0])) * h],
+                    [box[2] * w, box[3] * h],
+                    [box[0] * w, box[3] * h],
+                ]
+            )
 
             box_poly = Polygon(box_base)
 
             # Find the square that maximizes the intersection with the piece "foot"
-            intersections = [(sq, squares_polygons[sq].intersection(box_poly).area) for sq in range(64)]
+            intersections = [
+                (sq, squares_polygons[sq].intersection(box_poly).area)
+                for sq in range(64)
+            ]
             best_square, area = max(intersections, key=lambda x: x[1])
 
-            piece = chess.Piece(piece_type = self.pieces_labels[(label)%6], color = label>=6)
+            piece = chess.Piece(
+                piece_type=self.pieces_labels[(label) % 6], color=label >= 6
+            )
 
             if area > 0 and score > pieces[best_square]["score"]:
                 pieces[best_square]["score"] = score
@@ -263,7 +302,7 @@ class ChessboardParser():
             boxes, segments, masks = self.board_net(image)
             if len(masks) > 0:
                 board_masks.append(masks[0])
-            else :
+            else:
                 board_masks.append(np.zeros((image.shape[0], image.shape[1])))
 
         print(f"{time.time() - t} - Running segmentation network")
@@ -273,16 +312,11 @@ class ChessboardParser():
 
         for original, image, mask in zip(images, squared_images, board_masks):
 
-            result = {
-                "pieces": [],
-                "board": "",
-                "status": "OK",
-                "board_poly": []
-                }
+            result = {"pieces": [], "board": "", "status": "OK", "board_poly": []}
 
             # mask = np.uint8(masks_batch[image_idx].masks.data.cpu().numpy() * 255)
             # mask = np.swapaxes(np.swapaxes(mask, 0, 1), 1, 2)
-            mask = np.expand_dims(np.uint8(mask) * 255,2)
+            mask = np.expand_dims(np.uint8(mask) * 255, 2)
 
             squares_corners = self.extract_squares_coords(image, mask)
             if squares_corners is None:
@@ -297,19 +331,23 @@ class ChessboardParser():
             dw = w - original.shape[1]
             dh = h - original.shape[0]
 
-            mask = cv2.resize(mask, (w,h))
+            mask = cv2.resize(mask, (w, h))
 
-            board_poly = np.array([
-                squares_corners[7][1],
-                squares_corners[63][2],
-                squares_corners[56][3],
-                squares_corners[0][0]]
+            board_poly = np.array(
+                [
+                    squares_corners[7][1],
+                    squares_corners[63][2],
+                    squares_corners[56][3],
+                    squares_corners[0][0],
+                ]
             )
             result["board_poly"] = board_poly
 
-            board_mask = cv2.fillPoly(np.zeros(mask.shape, np.uint8), [board_poly], color=255)
+            board_mask = cv2.fillPoly(
+                np.zeros(mask.shape, np.uint8), [board_poly], color=255
+            )
 
-            #cv2.imwrite("test.jpg", board_mask)
+            # cv2.imwrite("test.jpg", board_mask)
 
             boxes, segments, masks = self.hand_net(image)
             if len(masks) > 0:
@@ -317,14 +355,13 @@ class ChessboardParser():
             else:
                 hands_mask = np.zeros_like(board_mask)
 
-
-            mixed_mask = board_mask/2 + hands_mask/2
-            mixed_mask[mixed_mask<200] = 0
+            mixed_mask = board_mask / 2 + hands_mask / 2
+            mixed_mask[mixed_mask < 200] = 0
 
             if np.max(mixed_mask.reshape(-1)) > 0 and False:
-                self.hands_on_board = 1#min(self.hands_on_board+1, 3)
+                self.hands_on_board = 1  # min(self.hands_on_board+1, 3)
             else:
-                self.hands_on_board = 0#max(self.hands_on_board-1, 0)
+                self.hands_on_board = 0  # max(self.hands_on_board-1, 0)
 
             # imageRGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             # imageRGB.flags.writeable=False
@@ -363,7 +400,6 @@ class ChessboardParser():
 
             boxes, labels, scores = self.detect_net(img_cropped)
             # boxes_flipped, labels_flipped, scores_flipped = self.detect_net(img_cropped_flipped)
-
 
             # output = self.detect_net(
             #     [img_cropped, img_cropped_flipped],
@@ -429,4 +465,3 @@ class ChessboardParser():
             t = time.time()
 
         return results
-

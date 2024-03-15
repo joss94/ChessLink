@@ -2,26 +2,29 @@ import operator
 import chess
 import chess.pgn
 
+
 def get_italian_board():
     board = chess.Board(chess.STARTING_FEN)
-    board.push_uci('e2e4')
-    board.push_uci('e7e5')
-    board.push_uci('g1f3')
-    board.push_uci('b8c6')
-    board.push_uci('f1c4')
-    board.push_uci('f8c5')
+    board.push_uci("e2e4")
+    board.push_uci("e7e5")
+    board.push_uci("g1f3")
+    board.push_uci("b8c6")
+    board.push_uci("f1c4")
+    board.push_uci("f8c5")
     return board
 
+
 def get_reachable_positions(board, n_moves):
-        positions = []
-        for move in board.legal_moves:
-            board.push(move)
-            if n_moves == 1:
-                positions.append(board.fen())
-            else:
-                positions.extend(get_reachable_positions(board, n_moves-1))
-            board.pop()
-        return positions
+    positions = []
+    for move in board.legal_moves:
+        board.push(move)
+        if n_moves == 1:
+            positions.append(board.fen())
+        else:
+            positions.extend(get_reachable_positions(board, n_moves - 1))
+        board.pop()
+    return positions
+
 
 def board_fullstring(board):
     out = ""
@@ -30,7 +33,10 @@ def board_fullstring(board):
         out += p.symbol() if p else "."
     return out
 
-def moves_between_positions(board1, board2, n_moves, try_both_colors=False, still_squares=[]):
+
+def moves_between_positions(
+    board1, board2, n_moves, try_both_colors=False, still_squares=[]
+):
     possible_moves = []
     target = board_fullstring(board2)
     lowest_moves_count = 1e6
@@ -43,7 +49,7 @@ def moves_between_positions(board1, board2, n_moves, try_both_colors=False, stil
         loss = 0
         for a, b in zip(board_fullstring(b1), board_fullstring(b2)):
             if a != b:
-                if a == '.' or b == '.':
+                if a == "." or b == ".":
                     loss += 10
                     continue
                 if a.lower() != b.lower():
@@ -59,7 +65,9 @@ def moves_between_positions(board1, board2, n_moves, try_both_colors=False, stil
             return
 
         loss = boards_loss(board, board2)
-        possible_moves.append((board.move_stack[-move_nb:] if move_nb > 0 else [], loss, move_nb))
+        possible_moves.append(
+            (board.move_stack[-move_nb:] if move_nb > 0 else [], loss, move_nb)
+        )
         if loss == 0 and (move_nb < lowest_moves_count or lowest_moves_count < 0):
             lowest_moves_count = move_nb
 
@@ -73,7 +81,7 @@ def moves_between_positions(board1, board2, n_moves, try_both_colors=False, stil
                 continue
 
             board.push(move)
-            try_position(board, move_nb+1)
+            try_position(board, move_nb + 1)
             board.pop()
 
     try_position(board1, move_nb=0)
@@ -86,10 +94,12 @@ def moves_between_positions(board1, board2, n_moves, try_both_colors=False, stil
 
     return possible_moves
 
+
 def board_pgn_string(board):
     game = chess.pgn.Game.from_board(board)
     exporter = chess.pgn.StringExporter(headers=False, variations=False, comments=False)
     return game.accept(exporter)
+
 
 def board_to_string(board, add_moves=True):
 
@@ -97,16 +107,17 @@ def board_to_string(board, add_moves=True):
     if add_moves:
         string += board_pgn_string(board) + "\n"
 
-    string += '   --------------- \n'
+    string += "   --------------- \n"
     for row in range(7, -1, -1):
-        string += f'{row+1} |'
+        string += f"{row+1} |"
         for col in range(0, 8):
             p = board.piece_at(chess.square(col, row))
-            string += p.symbol() if p is not None else '.'
-            string += ' ' if col <7 else '|\n'
-    string += '   --------------- \n'
-    string += '   a b c d e f g h \n'
+            string += p.symbol() if p is not None else "."
+            string += " " if col < 7 else "|\n"
+    string += "   --------------- \n"
+    string += "   a b c d e f g h \n"
     return string
+
 
 def boards_to_string(boards):
     out = ""
@@ -120,7 +131,6 @@ def boards_to_string(boards):
             out += board[line_nb] + "   "
         out += "\n"
     return out
-
 
 
 # board = chess.Board(chess.STARTING_FEN)

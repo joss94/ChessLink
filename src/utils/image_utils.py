@@ -18,14 +18,22 @@ import uuid
 
 
 def make_square_image(img):
-    ar = img.shape[0]/img.shape[1]
-    borders = np.array([0,0,0,0])
+    ar = img.shape[0] / img.shape[1]
+    borders = np.array([0, 0, 0, 0])
     if ar < 0.99:
-        borders[[0,1]] = int(0.5 * (img.shape[1] - img.shape[0]))
+        borders[[0, 1]] = int(0.5 * (img.shape[1] - img.shape[0]))
     elif ar > 1.01:
-        borders[[2,3]] = int(0.5 * (img.shape[0] - img.shape[1]))
+        borders[[2, 3]] = int(0.5 * (img.shape[0] - img.shape[1]))
 
-    output = cv2.copyMakeBorder(img, borders[0], borders[1], borders[2], borders[3], cv2.BORDER_CONSTANT, value = (0,0,0))
+    output = cv2.copyMakeBorder(
+        img,
+        borders[0],
+        borders[1],
+        borders[2],
+        borders[3],
+        cv2.BORDER_CONSTANT,
+        value=(0, 0, 0),
+    )
     return output, borders
 
 
@@ -35,23 +43,33 @@ def crop_board(img, corners):
 
     [X, Y, W, H] = cv2.boundingRect(corners)
 
-    c_x = X + 0.5*W
-    c_y = Y + 0.5*H
+    c_x = X + 0.5 * W
+    c_y = Y + 0.5 * H
 
     A = H if H > W else W
     A *= 1.2
 
-    borders = np.array([0,0,0,0], dtype=np.int32)
+    borders = np.array([0, 0, 0, 0], dtype=np.int32)
     borders[0] = max(0, 0.5 * A - c_y)
     borders[1] = max(0, c_y + 0.5 * A - h)
     borders[2] = max(0, 0.5 * A - c_x)
     borders[3] = max(0, c_x + 0.5 * A - w)
 
-    bordered = cv2.copyMakeBorder(img, borders[0], borders[1], borders[2], borders[3], cv2.BORDER_CONSTANT, value = (0,0,0))
+    bordered = cv2.copyMakeBorder(
+        img,
+        borders[0],
+        borders[1],
+        borders[2],
+        borders[3],
+        cv2.BORDER_CONSTANT,
+        value=(0, 0, 0),
+    )
     c_y += borders[0]
     c_x += borders[2]
 
-    cropped = bordered[int(c_y-0.5*A):int(c_y+0.5*A),int(c_x-0.5*A):int(c_x+0.5*A)]
+    cropped = bordered[
+        int(c_y - 0.5 * A) : int(c_y + 0.5 * A), int(c_x - 0.5 * A) : int(c_x + 0.5 * A)
+    ]
 
     X -= 0.1 * W
     Y -= 0.1 * H
@@ -62,7 +80,7 @@ def crop_board(img, corners):
     W = min(W, w - X - 1)
     H = min(H, h - Y - 1)
 
-    cropped = img[int(Y):int(Y+H),int(X):int(X+W)]
+    cropped = img[int(Y) : int(Y + H), int(X) : int(X + W)]
     out, borders = make_square_image(cropped)
 
     return out, [X - borders[2], Y - borders[0], out.shape[1], out.shape[0]]

@@ -6,7 +6,7 @@ model = YOLO("yolov8m-seg.pt")  # load a pretrained model (recommended for train
 
 # Train the model with 2 GPUs
 results = model.train(
-    data='/workspace/ChessLink/data/dataset_yolo_seg_3/data.yaml',
+    data="/workspace/ChessLink/data/dataset_yolo_seg_3/data.yaml",
     epochs=1000,
     imgsz=640,
     device=1,
@@ -22,5 +22,5 @@ results = model.train(
     batch=16,
     augment=True,
     # dfl=0.0,
-    patience=1000
+    patience=1000,
 )

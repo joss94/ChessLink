@@ -14,6 +14,7 @@ import typing
 
 from orb.primitives.basic_primitive import BasicPrimitive
 
+
 class ExportBoardPrimitive(BasicPrimitive):
     def __init__(self):
         """Constructor"""
@@ -97,7 +98,7 @@ class ExportBoardPrimitive(BasicPrimitive):
         right = None
         top = None
 
-        cam = bpy.data.objects['Camera']
+        cam = bpy.data.objects["Camera"]
         extr = self.get_extrinsics_parameters(cam)
         intr = self.get_intrinsics_parameters(cam)
 
@@ -111,25 +112,26 @@ class ExportBoardPrimitive(BasicPrimitive):
 
         full_mat = np.array(w2c @ object_eval.matrix_world)
         image_cos = np.transpose(full_mat @ np.transpose(cos))
-        image_cos[:,0] /= image_cos[:,2]
-        image_cos[:,1] /= image_cos[:,2]
+        image_cos[:, 0] /= image_cos[:, 2]
+        image_cos[:, 1] /= image_cos[:, 2]
 
         render = bpy.context.scene.render
         scale = render.resolution_percentage / 100
         resolution_x_in_px = scale * render.resolution_x
         resolution_y_in_px = scale * render.resolution_y
 
-        left = np.min(image_cos[:,0]) / resolution_x_in_px
-        right = np.max(image_cos[:,0]) / resolution_x_in_px
-        top = np.min(image_cos[:,1]) / resolution_y_in_px
-        bottom = np.max(image_cos[:,1]) / resolution_y_in_px
+        left = np.min(image_cos[:, 0]) / resolution_x_in_px
+        right = np.max(image_cos[:, 0]) / resolution_x_in_px
+        top = np.min(image_cos[:, 1]) / resolution_y_in_px
+        bottom = np.max(image_cos[:, 1]) / resolution_y_in_px
 
         return [left, bottom, right, top]
 
     # pylint: disable = W0221, W0511
-    def execute(self, boardCollection: bpy.types.Collection, output_folder: str, filename: str):
-        """Extract head of a human
-        """
+    def execute(
+        self, boardCollection: bpy.types.Collection, output_folder: str, filename: str
+    ):
+        """Extract head of a human"""
 
         output_folder = bpy.path.abspath(output_folder)
 
@@ -139,25 +141,27 @@ class ExportBoardPrimitive(BasicPrimitive):
         annot = {}
 
         # Place all final pieces by duplicating temporary imports
-        annot['pieces'] = []
+        annot["pieces"] = []
         for piece_obj in boardCollection.objects:
             info = {}
-            info['piece'] = piece_obj["CL_piece"]
-            info['bbox'] = self.get_object_bouding_box(piece_obj)
-            info['index'] = piece_obj.pass_index
-            annot['pieces'].append(info)
+            info["piece"] = piece_obj["CL_piece"]
+            info["bbox"] = self.get_object_bouding_box(piece_obj)
+            info["index"] = piece_obj.pass_index
+            annot["pieces"].append(info)
 
         # Get board 2D projection
-        annot['board'] = []
-        grid_obj = bpy.data.objects['Grid']
+        annot["board"] = []
+        grid_obj = bpy.data.objects["Grid"]
         for vert in grid_obj.data.vertices:
             world_co = grid_obj.matrix_world @ vert.co
-            image_co = world_to_camera_view(bpy.context.scene, bpy.data.objects['Camera'], world_co)
-            annot['board'].append(list(image_co.to_2d()))
+            image_co = world_to_camera_view(
+                bpy.context.scene, bpy.data.objects["Camera"], world_co
+            )
+            annot["board"].append(list(image_co.to_2d()))
 
         # Save annotations
-        with open(str(Path(output_folder) / f'{filename}.json'), 'w+') as o:
-            o.write(str(json.dumps(annot, indent = 4)))
+        with open(str(Path(output_folder) / f"{filename}.json"), "w+") as o:
+            o.write(str(json.dumps(annot, indent=4)))
 
     def get_output_names(self):
         return []

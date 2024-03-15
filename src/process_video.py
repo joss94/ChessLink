@@ -3,7 +3,7 @@ import cv2
 
 from app.video_parser import VideoParser
 
-DEVICE=1
+DEVICE = 1
 
 VIDEO_PATH = "/workspace/ChessLink/data/test_images/carlsen.mp4"
 # VIDEO_PATH = "/workspace/ChessLink/data/test_images/carlsen_2.mp4"
@@ -24,12 +24,12 @@ if __name__ == "__main__":
 
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_idx)
     frame_idx = start_idx
-    while(True):
+    while True:
         ret, frame = cap.read()
 
         if "carlsen" in VIDEO_PATH:
             h, w, _ = frame.shape
-            frame[:int(h/2),:,:] = 0
+            frame[: int(h / 2), :, :] = 0
 
         parser.process_next_frame(frame, frame_idx)
 

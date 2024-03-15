@@ -9,11 +9,13 @@ from app.chessboard_parser import ChessboardParser
 from utils.image_utils import draw_results_on_image
 from utils.chess_utils import *
 
-class VideoParser():
+
+class VideoParser:
 
     """
     Constructor
     """
+
     def __init__(self, verbose=True):
         self.chessboard_parser = ChessboardParser()
 
@@ -40,13 +42,13 @@ class VideoParser():
         self.status = ""
         self.last_board_det_time = -1
 
-
     """
     Computes a motion mask that extracts areas of the scene that have changed between
     2 frames. It is possible to provide a mask to run the motion detection only on a
     specific subregion of the scene
     """
-    def compute_motion_mask(self, frame1, frame2, mask = None):
+
+    def compute_motion_mask(self, frame1, frame2, mask=None):
         img1 = cv2.cvtColor(frame1, cv2.COLOR_RGB2GRAY)
         img2 = cv2.cvtColor(frame2, cv2.COLOR_RGB2GRAY)
 
@@ -60,17 +62,19 @@ class VideoParser():
         motion_mask = cv2.medianBlur(motion_mask, 3)
 
         # morphological operations
-        kernel=np.array((9,9))
-        motion_mask = cv2.morphologyEx(motion_mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+        kernel = np.array((9, 9))
+        motion_mask = cv2.morphologyEx(
+            motion_mask, cv2.MORPH_CLOSE, kernel, iterations=1
+        )
         move_count = np.sum(motion_mask) / 255
 
         return motion_mask, move_count
-
 
     """
     Computes the intersection over union metric for 2 bounding boxes.
     This is useful when trying to determine if a detected piece has moved or not
     """
+
     def compute_iou(self, boxA, boxB):
         boxAArea = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
         boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
@@ -86,7 +90,6 @@ class VideoParser():
 
         return interArea / float(boxAArea + boxBArea - interArea)
 
-
     """
     Run analysis on the buffer.
     There are 5 steps:
@@ -97,6 +100,7 @@ class VideoParser():
         4. Draw results on images and save them if necessary
         5. Clear the buffer
     """
+
     def process_buffer(self):
 
         if len(self.buffer) == 0:
@@ -137,7 +141,10 @@ class VideoParser():
                         continue
 
                     # Different IOU means a move coudl have happened there (back and forth)
-                    if abs(self.compute_iou(piece["box"], prev_piece["box"]) - 1.0) > 0.1:
+                    if (
+                        abs(self.compute_iou(piece["box"], prev_piece["box"]) - 1.0)
+                        > 0.1
+                    ):
                         continue
 
                     # Otherwise, this piece stood still, no moved happened here
@@ -147,7 +154,9 @@ class VideoParser():
             # otherwise it is too heavy computationally
             moves_list = []
             if len(still_squares) > 0:
-                moves_list = moves_between_positions(self.safe_board, board, 2, False, still_squares)
+                moves_list = moves_between_positions(
+                    self.safe_board, board, 2, False, still_squares
+                )
 
             # Update stable board with identified moves
             if len(moves_list):
@@ -167,9 +176,8 @@ class VideoParser():
             # Update board detection
             board_poly = r["board_poly"]
             self.board_mask = np.zeros((frame.shape[0], frame.shape[1]), dtype=np.uint8)
-            cv2.fillPoly(self.board_mask, [board_poly], color = 1)
+            cv2.fillPoly(self.board_mask, [board_poly], color=1)
             self.board_mask = cv2.dilate(self.board_mask, None, iterations=50)
-
 
         # Draw results on images
         if self.save_individuals or self.save_video:
@@ -184,9 +192,14 @@ class VideoParser():
 
                 if self.save_video:
                     if not writer:
-                        vid_size = (1080,720)
-                        fps = int(25/self.process_freq)
-                        writer = cv2.VideoWriter("output/video.avi", cv2.VideoWriter_fourcc(*'MJPG'), fps, vid_size)
+                        vid_size = (1080, 720)
+                        fps = int(25 / self.process_freq)
+                        writer = cv2.VideoWriter(
+                            "output/video.avi",
+                            cv2.VideoWriter_fourcc(*"MJPG"),
+                            fps,
+                            vid_size,
+                        )
                     writer.write(cv2.resize(image_cpy, vid_size))
 
         # Clear buffer
@@ -207,7 +220,9 @@ class VideoParser():
         # "still" image after each motion
         if self.board_mask is not None and self.last_frame is not None:
 
-            _, move_count = self.compute_motion_mask(frame, self.last_frame, self.board_mask)
+            _, move_count = self.compute_motion_mask(
+                frame, self.last_frame, self.board_mask
+            )
 
             self.still = self.still + 1 if move_count == 0 else 0
             if self.still == self.still_time:
@@ -219,6 +234,3 @@ class VideoParser():
         # Run analysis on buffer when it is full
         if len(self.buffer) >= self.buff_size:
             results = self.process_buffer()
-
-
-

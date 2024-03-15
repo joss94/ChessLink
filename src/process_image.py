@@ -4,12 +4,12 @@ import numpy as np
 from app.chessboard_parser import ChessboardParser
 from utils.image_utils import draw_results_on_image
 
-DEVICE=0
+DEVICE = 0
 
-image_path = '/workspace/ChessLink/data/gamestate_test/0020.png'
-image_path = '/workspace/ChessLink/data/chessred_test/0/G000_IMG040.jpg'
+image_path = "/workspace/ChessLink/data/gamestate_test/0020.png"
+image_path = "/workspace/ChessLink/data/chessred_test/0/G000_IMG040.jpg"
 # image_path = '/workspace/ChessLink/data/dataset_test_CL6/data_aaab3a0a-8318-11ee-b9f1-a036bc2aad3a.jpg'
-image_path = '/workspace/ChessLink/data/test_images/1000011469.jpg'
+image_path = "/workspace/ChessLink/data/test_images/1000011469.jpg"
 # image_path = '/workspace/ChessLink/data/dataset_test_CL3/data_75cfde3a-820f-11ee-8c9c-a036bc2aad3a.jpg'
 # image_path = '/workspace/ChessLink/data/dataset_test_CL3/data_8897d096-820f-11ee-b357-a036bc2aad3a.jpg'
 

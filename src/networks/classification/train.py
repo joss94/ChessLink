@@ -6,11 +6,10 @@ model = YOLO("yolov8n-cls.pt")  # load a pretrained model (recommended for train
 
 # Train the model with 2 GPUs
 results = model.train(
-    data='/workspace/ChessLink/data/dataset_pieces/',
+    data="/workspace/ChessLink/data/dataset_pieces/",
     epochs=1000,
     imgsz=128,
-    device=
-    0,
+    device=0,
     patience=1000,
     augment=True,
     batch=8000,
