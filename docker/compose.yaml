@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  app:
+    container_name: ${CONTAINER_NAME}
+    image: ${IMAGE_NAME}
+    build:
+      context: .
+      args:
+        BASE_IMAGE: ${BASE_IMAGE}
+        PROJECT_NAME: ${PROJECT_NAME}
+        USER: ${USER}
+        UID: ${USER_ID}
+        GID: ${GROUP_ID}
+        VGLUSERS_ID: ${VGLUSERS_ID}
+
+    volumes:
+      - ../:/workspace/${PROJECT_NAME}
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ${HOME}/.ssh:/home/${USER}/.ssh
+      - ${HOME}/.gitconfig:/home/${USER}/.gitconfig
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+
+    # networks:
+    #   - chesslink-network
+
+    group_add:
+      - video
+      - sudo
+      # - vglusers
+
+    working_dir: /workspace/${PROJECT_NAME}
+    shm_size: 8g
+
+    devices:
+      #- "/dev/video0:/dev/video"
+      - "/dev/snd:/dev/snd"
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: ["gpu"]
+# networks:
+#   chesslink-network:
+#     name: chesslink-network
