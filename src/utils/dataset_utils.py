@@ -52,18 +52,17 @@ def merge(datasets, dataset_dst):
         )
 
 
-def merge_yolo(datasets, dst_dir):
+def merge_yolo(datasets, dst_dir, allow_multiple=False):
     os.makedirs(dst_dir, exist_ok=True)
     os.makedirs(Path(dst_dir) / "train", exist_ok=True)
     os.makedirs(Path(dst_dir) / "train" / "images", exist_ok=True)
     os.makedirs(Path(dst_dir) / "train" / "labels", exist_ok=True)
 
-    image_file_paths = []
     for dataset in datasets:
 
         images = glob.glob(dataset + "/train/images/*.jpg")
-        if "yolo_merge" in dataset:
-            images = images[:10000]
+        # if "dataset_yolo_" in dataset:
+        #     images = images[:30000]
 
         for image_path in tqdm(images):
             label_path = image_path.replace(".jpg", ".txt").replace("images", "labels")
@@ -73,11 +72,21 @@ def merge_yolo(datasets, dst_dir):
             if not dst_img_path.exists():
                 shutil.copy(image_path, str(dst_img_path))
                 shutil.copy(label_path, str(dst_label_path))
+            else:
+                if allow_multiple:
+                    i = 0
+                    while(dst_img_path.exists()):
+                        dst_img_path = Path(dst_dir) / "train" / "images" / f"{data_name}_{i}.jpg"
+                        dst_label_path = Path(dst_dir) / "train" / "labels" / f"{data_name}_{i}.txt"
+                        i += 1
 
-    with open(Path(dst_dir) / "data.yaml", "w+") as f:
-        f.write(f"train: {str(Path(dst_dir)/"train"/"images")}\n")
-        f.write("val: /workspace/ChessLink/data/chessred_test_yolo/val/images\n")
-        f.write("test: /workspace/ChessLink/data/chessred_test_yolo/val/images\n")
+                    shutil.copy(image_path, str(dst_img_path))
+                    shutil.copy(label_path, str(dst_label_path))
+
+    with open(str(Path(dst_dir) / "data.yaml"), "w+") as f:
+        f.write(f'train: {str(Path(dst_dir)/"train"/"images")}\n')
+        f.write("val: /workspace/jma_test/data/chessred_test_yolo/val/images\n")
+        f.write("test: /workspace/jma_test/data/chessred_test_yolo/val/images\n")
         f.write(f"nc: 12\n")
         f.write(
             f"names: ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']\n"
@@ -165,7 +174,7 @@ def visualize_annots_yolo(dataset_path):
 
 
 def gen_yolo_annot(
-    path, dst_dir, train_split, val_split, class_names, diff_color, overwrite
+    path, dst_dir, class_names, diff_color, overwrite
 ):
 
     annots_path = Path(dst_dir) / "train" / "labels" / (str(Path(path).stem) + ".txt")
@@ -178,16 +187,10 @@ def gen_yolo_annot(
     img = cv2.imread(path)
     h, w, _ = img.shape
 
-    img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    center_sz = 0.1
-    img_hsv_center = img_hsv[
-        int((0.5 - center_sz) * h) : int((0.5 + center_sz) * h),
-        int((0.5 - center_sz) * w) : int((0.5 + center_sz) * w),
-    ]
-    mean_value = np.mean(img_hsv[..., 2])
-    correction_factor = 200 / mean_value
-    img_hsv[..., 2] = np.uint8(np.clip(img_hsv[..., 2] * correction_factor, 0, 255))
-    img = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
+    # img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    # correction_factor = 200 / np.mean(img_hsv[..., 2])
+    # img_hsv[..., 2] = np.uint8(np.clip(img_hsv[..., 2] * correction_factor, 0, 255))
+    # img = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2BGR)
 
     with open(path.replace(".jpg", ".json")) as f:
         annots = json.loads(f.read())
@@ -262,6 +265,8 @@ def convert_roboflow(src_directory="", dst_directory=""):
 
         images = glob.glob(os.path.join(src_directory, subset) + "/images/*.jpg")
         for image_path in tqdm(images):
+
+            print(image_path)
 
             img = cv2.imread(image_path)
             h, w, c = img.shape
@@ -385,26 +390,8 @@ def gen_yolo_annots(
     image_file_paths = [img for img in image_file_paths if "mask" not in img]
     # image_file_paths = image_file_paths[:100]
 
-    train_split = 0.9
-    val_split = 1.0 - train_split
-
     if diff_color:
-        class_names = [
-            "B",
-            "K",
-            "N",
-            "P",
-            "Q",
-            "R",
-            "board",
-            "mask",
-            "b",
-            "k",
-            "n",
-            "p",
-            "q",
-            "r",
-        ]
+        class_names = ["p", "n", "b", "r", "q", "k", "P", "N", "B", "R", "Q", "K"]
     else:
         class_names = ["p", "n", "b", "r", "q", "k"]
 
@@ -412,8 +399,6 @@ def gen_yolo_annots(
         (
             image_file_paths[i],
             dst_dir,
-            train_split,
-            val_split,
             class_names,
             diff_color,
             overwrite,
@@ -439,9 +424,6 @@ def gen_yolo_annots(
         f.write(
             f"names: ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']\n"
         )
-
-        f.write(f"augment: True\n")
-        # f.write(f"mosaic: 0.0\n")
 
 
 def change_yolo_split(dir, train=0.8, val=0.15, test=0.05):
@@ -737,8 +719,8 @@ def gen_yolo_annots_seg_with_pieces(
 
 
 def chessred_2_yolo(
-    src_dir="/workspace/ChessLink/data/chessred_test",
-    dst_dir="/workspace/ChessLink/data/chessred_test_yolo2",
+    src_dir="/workspace/jma_test/data/chessred_test",
+    dst_dir="/workspace/jma_test/data/chessred_test_yolo",
 ):
 
     class_indices = [6, 9, 7, 8, 10, 11, 0, 3, 1, 2, 4, 5, 12]
@@ -750,7 +732,7 @@ def chessred_2_yolo(
     path = src_dir + "/*/*.jpg"
     image_file_paths = glob.glob(path, recursive=True)
 
-    with open("./data/chessred_test/annotations.json") as f:
+    with open("/workspace/jma_test/data/chessred_test/annotations.json") as f:
         annots = json.load(f)
 
     for path in tqdm(image_file_paths):
@@ -773,7 +755,6 @@ def chessred_2_yolo(
         )
 
         img = cv2.imread(path)
-        h, w, _ = img.shape
 
         img_cropped, [X, Y, W, H] = crop_board(img, corners)
 
@@ -790,7 +771,7 @@ def chessred_2_yolo(
             box[3] /= H
 
             p_class = class_indices[piece["category_id"]]
-            p_class = p_class % 6
+            # p_class = p_class % 6
             center_x = box[0] + 0.5 * box[2]
             center_y = box[1] + 0.5 * box[3]
             width = box[2]
@@ -953,8 +934,8 @@ def remap_classes(
 # )
 
 # gen_yolo_annots(
-#     data_directory="/workspace/ChessLink/data/dataset_test_CL26",
-#     dst_dir="/workspace/ChessLink/data/dataset_yolo_merge",
+#     data_directory="/workspace/jma_test/data/dataset_test_CL29",
+#     dst_dir="/workspace/jma_test/data/dataset_yolo_29_3",
 #     diff_color=True,
 #     overwrite=False
 # )
@@ -972,13 +953,17 @@ def remap_classes(
 
 # visualize_annots_yolo("/workspace/ChessLink/data/dataset_yolo_23")
 
-convert_roboflow(
-    "/workspace/ChessLink/data/CL.v11i.yolov8_original",
-    "/workspace/ChessLink/data/CL.v11i.yolov8",
-)
-merge_yolo([
-        "/workspace/ChessLink/data/dataset_yolo_merge",
-        "/workspace/ChessLink/data/CL.v11i.yolov8"],
-    "/workspace/ChessLink/data/dataset_yolo_merge_w_10kreal")
+# convert_roboflow(
+#     "/workspace/jma_test/data/CL.v12i.yolov9_original",
+#     "/workspace/jma_test/data/CL.v12i.yolov9",
+# )
+
+merge_yolo(
+    [
+        "/workspace/jma_test/data/dataset_yolo_29_3",
+        "/workspace/jma_test/data/CL.v11i.yolov8",
+    ],
+    "/workspace/jma_test/data/dataset_yolo_merge_29_6",
+    allow_multiple=True)
 
 # remap_classes("/workspace/ChessLink/data/dataset_yolo_merge_remapped")
