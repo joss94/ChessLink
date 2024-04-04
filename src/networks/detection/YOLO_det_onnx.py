@@ -3,7 +3,7 @@ import numpy as np
 import onnxruntime as ort
 
 
-class YOLOv8:
+class YOLOv8ONNX:
     """YOLOv8 object detection model class for handling inference and visualization."""
 
     def __init__(self, onnx_model, confidence_thres=0.1, iou_thres=0.99):
@@ -144,7 +144,7 @@ class YOLOv8:
         return boxes, labels, scores
 
 
-class YOLOv8Seg:
+class YOLOv8SegONNX:
     """YOLOv8 segmentation model."""
 
     def __init__(self, onnx_model):
