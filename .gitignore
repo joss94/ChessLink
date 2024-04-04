@@ -172,6 +172,7 @@ data/
 
 #Trainings
 runs/
+src/runs/
 yolov9/runs/
 wandb/
 

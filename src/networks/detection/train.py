@@ -3,32 +3,34 @@ from ultralytics import YOLO
 TRAIN = True
 RESUME = False
 
-NAME = "real_mix"
-DEVICE = 0
-DATASET = "/workspace/ChessLink/data/dataset_yolo_merge_w_real_5k/data.yaml"
-# DATASET = '/workspace/ChessLink/data/CL.v6i.yolov8/data.yaml'
+NAME = "real_mix_scale_newset_bs643"
+DEVICE = [
+    0,
+    # 1,
+    # 2,
+    # 3,
+]
+# DEVICE='cpu'
+
+DATASET = "/workspace/jma_test/data/dataset_yolo_merge_29_6/data.yaml"
 
 # Load a model
 if TRAIN and not RESUME:
-    model = YOLO("yolov8m.pt")  # load a pretrained model (recommended for training)
+    model = YOLO("yolov9c.yaml")
 else:
     model = YOLO(
-        f"/workspace/ChessLink/runs/detect/{NAME}/weights/last.pt"
-    )  # load a pretrained model (recommended for training)
-# model = YOLO('/workspace/CL/runs/train/last.pt')  # load a pretrained model (recommended for training)
-
-
-# Train the model with 2 GPUs
-# results = model.train(data='/workspace/ChessLink/data/dataset_yolo_9/data.yaml', epochs=1000, optimizer="Adam", lr0=1e-4, lrf=1e-2, imgsz=640, device=[3])
+        f"/workspace/jma_test/src/runs/detect/{NAME}/weights/last.pt"
+    )
 if TRAIN:
     results = model.train(
         name=NAME,
         resume=RESUME,
         data=DATASET,
         device=DEVICE,
+        pretrained=True,
         # Training params
         # ---------------------
-        batch=32,
+        batch=64,
         patience=1000,
         epochs=2000,
         imgsz=640,
@@ -43,10 +45,10 @@ if TRAIN:
         # Image transforms
         # ---------------------
         translate=0.0,
-        scale=0.0,
+        scale=0.7,
         degrees=15,
         perspective=0.0005,
-        shear=10,
+        shear=15,
         mosaic=0.0,
         fliplr=0.5,
         flipud=0.0,
