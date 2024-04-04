@@ -1,48 +1,46 @@
-import os
 import cv2
 import numpy as np
-
-# import mediapipe as mp
+from pathlib import Path
 
 import time
-import json
 import chess
 import chess.svg
-import scipy
-import math
-from cairosvg import svg2png
-from shapely.geometry import Polygon, Point
+from shapely.geometry import Polygon
 
-from networks.detection.YOLO_det_onnx import YOLOv8, YOLOv8Seg
-
-# from ultralytics import YOLO
-from io import BytesIO
-from PIL import Image
-
-import onnxruntime as ort
-
-# from networks.detection.train import DetectNet
+from networks.detection.YOLO_det_onnx import YOLOv8ONNX, YOLOv8SegONNX
+from ultralytics import YOLO
 from utils.image_utils import make_square_image, crop_board
 
-DETECT_WEIGHTS = "/src/model/detection/yolo/weights.onnx"
-SEGMENT_WEIGHTS = "/src/model/segment/yolo/weights.onnx"
-HANDS_WEIGHTS = "/src/model/yolov8n-seg.onnx"
+DETECT_WEIGHTS = str(Path("../src/model/detection/yolo/weights.pt"))
+SEGMENT_WEIGHTS = str(Path("./model/segment/yolo/weights.pt"))
+HANDS_WEIGHTS = str(Path("./model/yolov8n-seg.pt"))
 
 CONF = 0.5
 
 
 class ChessboardParser:
-    def __init__(self, detect_weights=DETECT_WEIGHTS, segment_weights=SEGMENT_WEIGHTS):
+    def __init__(self, detect_weights=DETECT_WEIGHTS, segment_weights=SEGMENT_WEIGHTS, device="cpu"):
         self.class_names = ["p", "n", "b", "r", "q", "k", "P", "N", "B", "R", "Q", "K"]
 
-        self.device = "cpu"
+        self.device = device
+        self.detect_weights = detect_weights
+        self.segment_weights = segment_weights
+        self.hands_weights = HANDS_WEIGHTS
 
-        # self.segment_net = YOLO(segment_weights)
-        self.hand_net = YOLOv8Seg(HANDS_WEIGHTS)
-        self.board_net = YOLOv8Seg(segment_weights)
-        self.detect_net = YOLOv8(detect_weights)
+        if HANDS_WEIGHTS.endswith("onnx"):
+            self.hand_net = YOLOv8SegONNX(HANDS_WEIGHTS)
+        else:
+            self.hand_net = YOLO(HANDS_WEIGHTS)
 
-        # self.hands_net = mp.solutions.hands.Hands(max_num_hands=6, min_detection_confidence=0.01, static_image_mode=True)
+        if segment_weights.endswith("onnx"):
+            self.segment_net = YOLOv8SegONNX(segment_weights)
+        else:
+            self.segment_net = YOLO(segment_weights)
+
+        if detect_weights.endswith("onnx"):
+            self.detect_net = YOLOv8ONNX(detect_weights)
+        else:
+            self.detect_net = YOLO(detect_weights)
 
         self.hands_on_board = 0
         self.fen = ""
@@ -296,14 +294,22 @@ class ChessboardParser:
 
         # Run segmentation and detection
         t = time.time()
-        # masks_batch = self.segment_net(squared_images, device=self.device, verbose=False)
         board_masks = []
         for image in squared_images:
-            boxes, segments, masks = self.board_net(image)
-            if len(masks) > 0:
-                board_masks.append(masks[0])
-            else:
-                board_masks.append(np.zeros((image.shape[0], image.shape[1])))
+            if(self.segment_weights.endswith("onnx")): # ONNX
+                boxes, segments, masks = self.segment_net(image)
+                if len(masks) == 0:
+                    masks = np.zeros((640, 640, 1))
+            else: # Pytorch
+                masks = self.segment_net(image, verbose=False)
+                if masks[0].masks is not None:
+                    masks = masks[0].masks.data.cpu().numpy()
+                    masks = np.swapaxes(np.swapaxes(masks, 0, 1), 1, 2)
+                else:
+                    masks = np.zeros((640, 640, 1))
+
+            board_mask = np.uint8(masks * 255)[..., 0]
+            board_masks.append(board_mask)
 
         print(f"{time.time() - t} - Running segmentation network")
         t = time.time()
@@ -314,15 +320,12 @@ class ChessboardParser:
 
             result = {"pieces": [], "board": "", "status": "OK", "board_poly": []}
 
-            # mask = np.uint8(masks_batch[image_idx].masks.data.cpu().numpy() * 255)
-            # mask = np.swapaxes(np.swapaxes(mask, 0, 1), 1, 2)
-            mask = np.expand_dims(np.uint8(mask) * 255, 2)
+            mask = np.expand_dims(mask, 2)
 
             squares_corners = self.extract_squares_coords(image, mask)
             if squares_corners is None:
                 result["status"] = "BOARD_NOT_FOUND"
                 results.append(result)
-                print("coucou")
                 continue
 
             result["squares"] = squares_corners
@@ -347,47 +350,30 @@ class ChessboardParser:
                 np.zeros(mask.shape, np.uint8), [board_poly], color=255
             )
 
-            # cv2.imwrite("test.jpg", board_mask)
+            if(self.hands_weights.endswith("onnx")): # ONNX
+                boxes, segments, masks = self.hand_net(image)
+                if len(masks) == 0:
+                    masks = np.zeros((640, 640, 1))
+            else: #Pytorch
+                masks = self.hand_net(image, verbose = False)
+                if masks[0].masks is not None:
+                    masks = masks[0].masks.data.cpu().numpy()
+                    masks = np.swapaxes(np.swapaxes(masks, 0, 1), 1, 2)
+                else:
+                    masks = np.zeros((640, 640, 1))
 
-            boxes, segments, masks = self.hand_net(image)
-            if len(masks) > 0:
-                hands_mask = np.uint8(masks[0]) * 255
-            else:
-                hands_mask = np.zeros_like(board_mask)
+            hands_mask = np.uint8(masks * 255)[..., 0]
+            hands_mask = cv2.resize(hands_mask, (w, h))
 
             mixed_mask = board_mask / 2 + hands_mask / 2
             mixed_mask[mixed_mask < 200] = 0
 
-            if np.max(mixed_mask.reshape(-1)) > 0 and False:
+            if np.max(mixed_mask.reshape(-1)) > 0:
                 self.hands_on_board = 1  # min(self.hands_on_board+1, 3)
             else:
                 self.hands_on_board = 0  # max(self.hands_on_board-1, 0)
 
-            # imageRGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            # imageRGB.flags.writeable=False
-            # hands_dets = self.hands_net.process(imageRGB)
-
-            # hands_mask = np.zeros((h,w))
-            # if hands_dets.multi_hand_landmarks:
-
-            #     for handLms in hands_dets.multi_hand_landmarks: # working with each hand
-            #         for _, lm in enumerate(handLms.landmark):
-            #             h, w, _ = image.shape
-            #             cx, cy = int(lm.x * w), int(lm.y * h)
-            #             cv2.circle(hands_mask, (cx, cy), int(0.01 * w), 255, cv2.FILLED)
-            #             cv2.circle(image, (cx, cy), int(0.01 * w), (0,0,255), cv2.FILLED)
-
-            #     board_mask = board_mask/2 + hands_mask/2
-            #     board_mask[board_mask<200] = 0
-
-            #     if np.max(board_mask.reshape(-1)) > 0:
-            #         self.hands_on_board = min(self.hands_on_board+1, 3)
-            #     else:
-            #         self.hands_on_board = max(self.hands_on_board-1, 0)
-            # else:
-            #     self.hands_on_board = max(self.hands_on_board-1, 0)
-
-            if self.hands_on_board > 0:
+            if self.hands_on_board > 0 and False:
                 result["status"] = "HAND_ON_BOARD"
                 result["board_poly"] = []
                 results.append(result)
@@ -395,10 +381,16 @@ class ChessboardParser:
 
             img_cropped, [X, Y, W, H] = crop_board(image, board_poly)
 
-            cv2.imwrite("output/cropped.jpg", img_cropped)
             img_cropped_flipped = cv2.flip(img_cropped, 1)
 
-            boxes, labels, scores = self.detect_net(img_cropped)
+            if self.detect_weights.endswith("onnx"): # ONNX
+                boxes, labels, scores = self.detect_net(img_cropped)
+            else: # Pytorch
+                detections = self.detect_net(img_cropped, device = self.device, verbose=False, conf=CONF)[0]
+                boxes = np.array([b.cpu().numpy() for b in detections.boxes.xyxyn]).reshape((-1,4))
+                labels = [int(c.cpu()) for c in detections.boxes.cls]
+                scores = [s.cpu() for s in detections.boxes.conf]
+
             # boxes_flipped, labels_flipped, scores_flipped = self.detect_net(img_cropped_flipped)
 
             # output = self.detect_net(
