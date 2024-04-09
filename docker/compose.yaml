@@ -4,6 +4,8 @@ services:
   app:
     container_name: ${CONTAINER_NAME}
     image: ${IMAGE_NAME}
+
+    network_mode: "host"
     build:
       context: .
       args:

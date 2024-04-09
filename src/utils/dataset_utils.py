@@ -61,8 +61,10 @@ def merge_yolo(datasets, dst_dir, allow_multiple=False):
     for dataset in datasets:
 
         images = glob.glob(dataset + "/train/images/*.jpg")
-        # if "dataset_yolo_" in dataset:
-        #     images = images[:30000]
+
+        print(f"Getting {len(images)} images from {dataset}")
+        if "dataset_yolo_" in dataset:
+            images = images[:20000]
 
         for image_path in tqdm(images):
             label_path = image_path.replace(".jpg", ".txt").replace("images", "labels")
@@ -169,7 +171,7 @@ def visualize_annots_yolo(dataset_path):
                 color=(0, 255, 0),
                 thickness=max(1, int(img.shape[0] / 500)),
             )
-        cv2.imwrite("/workspace/ChessLink/visu.jpg", img)
+        cv2.imwrite("/workspace/jma_test/visu.jpg", img)
         a = input()
 
 
@@ -726,8 +728,17 @@ def chessred_2_yolo(
     class_indices = [6, 9, 7, 8, 10, 11, 0, 3, 1, 2, 4, 5, 12]
 
     os.makedirs(dst_dir, exist_ok=True)
-    os.makedirs(Path(dst_dir) / "images", exist_ok=True)
-    os.makedirs(Path(dst_dir) / "labels", exist_ok=True)
+    os.makedirs(Path(dst_dir) / "val"/ "images", exist_ok=True)
+    os.makedirs(Path(dst_dir) / "val"/ "labels", exist_ok=True)
+
+    with open(Path(dst_dir) / "data.yaml", "w+") as f:
+        f.write(f'train: {str(Path(dst_dir) / "val" / "images")}\n')
+        f.write(f'val: {str(Path(dst_dir) / "val" / "images")}\n')
+        f.write(f'test: {str(Path(dst_dir) / "val" / "images")}\n')
+        f.write(f'nc: 12\n')
+        f.write(
+            f"names: ['p', 'n', 'b', 'r', 'q', 'k', 'P', 'N', 'B', 'R', 'Q', 'K']\n"
+        )
 
     path = src_dir + "/*/*.jpg"
     image_file_paths = glob.glob(path, recursive=True)
@@ -737,8 +748,8 @@ def chessred_2_yolo(
 
     for path in tqdm(image_file_paths):
 
-        annots_path = Path(dst_dir) / "labels" / (str(Path(path).stem) + ".txt")
-        img_path = Path(dst_dir) / "images" / (str(Path(path).stem) + ".jpg")
+        annots_path = Path(dst_dir) / "val"/ "labels" / (str(Path(path).stem) + ".txt")
+        img_path = Path(dst_dir) / "val"/ "images" / (str(Path(path).stem) + ".jpg")
 
         annot = next(a for a in annots["images"] if a["file_name"] == Path(path).name)
         img_id = annot["id"]
@@ -765,17 +776,20 @@ def chessred_2_yolo(
         for piece in pieces:
             box = piece["bbox"]
 
+            box[2] = box[0] + box[2]
+            box[3] = box[1] + box[3]
+
             box[0] = (box[0] - X) / W
-            box[2] /= W
+            box[2] = (box[2] - X) / W
             box[1] = (box[1] - Y) / H
-            box[3] /= H
+            box[3] = (box[3] - Y) / H
 
             p_class = class_indices[piece["category_id"]]
             # p_class = p_class % 6
-            center_x = box[0] + 0.5 * box[2]
-            center_y = box[1] + 0.5 * box[3]
-            width = box[2]
-            height = box[3]
+            center_x = 0.5 * (box[0] + box[2])
+            center_y = 0.5 * (box[1] + box[3])
+            width = box[2] - box[0]
+            height = box[3] - box[1]
             annots_txt += f"{p_class} {center_x} {center_y} {width} {height}\n"
 
         # shutil.copyfile(path, str(img_path))
@@ -792,7 +806,7 @@ def gen_pieces_dataset_from_yolo(
 ):
     os.makedirs(dst_dir, exist_ok=True)
     os.makedirs(Path(dst_dir) / "train", exist_ok=True)
-    os.makedirs(Path(dst_dir) / "valid", exist_ok=True)
+    os.makedirs(Path(dst_dir) / "val", exist_ok=True)
     os.makedirs(Path(dst_dir) / "test", exist_ok=True)
 
     class_names = ["p", "n", "b", "r", "q", "k", "P", "N", "B", "R", "Q", "K"]
@@ -802,7 +816,7 @@ def gen_pieces_dataset_from_yolo(
         os.makedirs(Path(dst_dir) / "test" / label, exist_ok=True)
 
     dataset = {
-        "train": glob.glob(src_dir + "/train/images/*.jpg", recursive=True),
+        "train": glob.glob(src_dir + "/train/images/*.jpg", recursive=True)[:10000],
         "val": glob.glob(src_dir + "/val/images/*.jpg", recursive=True),
         "test": glob.glob(src_dir + "/test/images/*.jpg", recursive=True),
     }
@@ -849,6 +863,7 @@ def gen_pieces_dataset_from_yolo(
 
                 # croppedImg = cv2.resize(make_square_image(croppedImg), (64,64))
                 croppedImg, _ = make_square_image(croppedImg)
+                croppedImg = cv2.resize(croppedImg, target_size)
 
                 filename = f"{uuid.uuid1()}.jpg"
                 cv2.imwrite(
@@ -940,17 +955,16 @@ def remap_classes(
 #     overwrite=False
 # )
 
-# gen_pieces_dataset_from_yolo(src_dir="/workspace/ChessLink/data/dataset_yolo_merge_w_10kreal_2", dst_dir="/workspace/ChessLink/data/dataset_pieces", target_size=(64, 64))
+# gen_pieces_dataset_from_yolo(src_dir="/workspace/jma_test/data/dataset_yolo_29_3", dst_dir="/workspace/jma_test/data/dataset_pieces_3", target_size=(320, 320))
+# gen_pieces_dataset_from_yolo(src_dir="/workspace/jma_test/data/chessred_test_yolo", dst_dir="/workspace/jma_test/data/chessred_pieces", target_size=(320, 320))
 
 # gen_pieces_dataset()
 # extract_kings_queens()
 # chessred_2_yolo()
 
-# files = glob.glob("/workspace/ChessLink/data/dataset_test_CL18/*.jpg")
-# visualize_annots(random.choice(files))
+# files = glob.glob("/workspace/jma_test/data/chessred_test_yolo")
+# visualize_annots_yolo(random.choice(files))
 # visualize_annots("/workspace/ChessLink/data/dataset_test_CL18/data_c2127aa3-8844-11ee-a2c1-a036bc2aad3a.jpg")
-
-
 # visualize_annots_yolo("/workspace/ChessLink/data/dataset_yolo_23")
 
 # convert_roboflow(
@@ -963,7 +977,13 @@ merge_yolo(
         "/workspace/jma_test/data/dataset_yolo_29_3",
         "/workspace/jma_test/data/CL.v11i.yolov8",
     ],
-    "/workspace/jma_test/data/dataset_yolo_merge_29_6",
+    "/workspace/jma_test/data/dataset_yolo_merge_29_7",
     allow_multiple=True)
 
 # remap_classes("/workspace/ChessLink/data/dataset_yolo_merge_remapped")
+
+# images = glob.glob("/workspace/jma_test/data/dataset_yolo_29_3/train/images/*.jpg", recursive=True)
+# print(len(images))
+# for i, image in enumerate(images[:200]):
+#     print(image)
+#     shutil.copy(image, f"/workspace/jma_test/output/{i}.jpg")
