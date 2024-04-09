@@ -170,12 +170,9 @@ data/
 *.pt
 *.onnx
 
-*.onnx
-
 #Trainings
 runs/
 src/runs/
-yolov9/runs/
 wandb/
 
 # Blender
