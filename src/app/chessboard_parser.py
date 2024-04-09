@@ -11,12 +11,11 @@ from networks.detection.YOLO_det_onnx import YOLOv8ONNX, YOLOv8SegONNX
 from ultralytics import YOLO
 from utils.image_utils import make_square_image, crop_board
 
-DETECT_WEIGHTS = str(Path("../src/model/detection/yolo/weights.pt"))
+DETECT_WEIGHTS = str(Path("../src/model/detection/yolo/real_mix22.onnx"))
 SEGMENT_WEIGHTS = str(Path("./model/segment/yolo/weights.pt"))
 HANDS_WEIGHTS = str(Path("./model/yolov8n-seg.pt"))
 
 CONF = 0.5
-
 
 class ChessboardParser:
     def __init__(self, detect_weights=DETECT_WEIGHTS, segment_weights=SEGMENT_WEIGHTS, device="cpu"):
@@ -253,8 +252,6 @@ class ChessboardParser:
 
         for box, score, label in zip(boxes, scores, labels):
 
-            # label -= 2
-
             # Build a square polygon with same width as box, bottom-aligned with the box
             # This polygon represents the "foot" of the piece, discarding the top part which
             # can be superimposed to other squares
@@ -373,13 +370,21 @@ class ChessboardParser:
             else:
                 self.hands_on_board = 0  # max(self.hands_on_board-1, 0)
 
-            if self.hands_on_board > 0 and False:
+            if self.hands_on_board > 0:
                 result["status"] = "HAND_ON_BOARD"
                 result["board_poly"] = []
                 results.append(result)
                 continue
 
             img_cropped, [X, Y, W, H] = crop_board(image, board_poly)
+
+            # HSV correction
+            h, w, _ = img_cropped.shape
+            # img_cropped_hsv = cv2.cvtColor(img_cropped, cv2.COLOR_BGR2HSV)
+            # mean_value = np.mean(img_cropped_hsv[..., 2])
+            # correction_factor = 200 / mean_value
+            # img_cropped_hsv[..., 2] = np.uint8(np.clip(img_cropped_hsv[..., 2] * correction_factor, 0, 255))
+            # img_cropped = cv2.cvtColor(img_cropped_hsv, cv2.COLOR_HSV2BGR)
 
             img_cropped_flipped = cv2.flip(img_cropped, 1)
 

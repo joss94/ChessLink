@@ -31,10 +31,10 @@ const motionStatusElement = document.querySelector("#motion_status");
 const boardStatusElement = document.querySelector("#board_status");
 
 
-const STILL_TIME = 2;
+const STILL_TIME = 5;
 
 const liveVideoElement = document.querySelector("#live-video");
-liveVideoElement.controls = false;
+liveVideoElement.controls = true;
 
 const liveImgElement = document.querySelector("#live-img");
 
@@ -123,9 +123,9 @@ function startCameraStream() {
           track.onended = function (event) {
             console.log(
               "video track.onended Video track.readyState=" +
-                track.readyState +
-                ", track.muted=" +
-                track.muted
+              track.readyState +
+              ", track.muted=" +
+              track.muted
             );
           };
         }
@@ -186,16 +186,22 @@ async function URLCallback() {
 
 async function runPeriodically(callback, time) {
   running = true;
-  while (true) {
+  while (running) {
+    let start = Date.now()
     callback();
-    await pause(time);
+    let delay = time - (Date.now() - start)
+    if (delay <= 0) {
+      delay = 1
+    }
+
+    await pause(delay);
   }
 }
 
 function startFileStream(video_file) {
   liveVideoElement.style.display = "block";
   liveImgElement.style.display = "none";
-  liveVideoElement.src = "video"
+  liveVideoElement.src = "video?filename=" + video_file
   liveVideoElement.play();
   runPeriodically(CameraCallback, 1000 / FPS);
 }
@@ -266,8 +272,6 @@ function processFrame() {
     .then((response) => response.json()) // Parse the data as JSON.
     .then((json_rsp) => {
       processing_status = "done";
-      // console.log("Done!")
-      //console.  log(json_rsp)
       if (!json_rsp) {
         throw new Error("Cannot reach server");
       }
@@ -294,8 +298,6 @@ function processFrame() {
 
         // Get board representation
         b64_to_image(game.board_png).then((image) => {
-          console.log(image.data)
-          // liveBoardElement.srcObject = image
           cv.imshow(liveBoardElement, image);
         });
       }

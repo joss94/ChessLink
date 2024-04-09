@@ -20,7 +20,6 @@ PORT = 8080
 app = FastAPI()
 app.mount("/css", StaticFiles(directory="/src/web_app/css"), name="css")
 app.mount("/js", StaticFiles(directory="/src/web_app/js"), name="js")
-app.mount("/weights", StaticFiles(directory="/src/web_app/weights"), name="weights")
 # app.mount("/mp4", StaticFiles(directory="/src/web_app/mp4"), name="mp4")
 # app.mount("/img", StaticFiles(directory="/src/web_app/img"), name="img")
 
@@ -43,14 +42,9 @@ def get_client_html():
     return html_content
 
 
-@app.get("/weights", response_class=FileResponse)
-async def get_weights():
-    return "/src/web_app/weights/weights.onnx"
-
-
 @app.get("/video", response_class=FileResponse)
-async def get_video():
-    return "/src/web_app/videos/caruana.mp4"
+async def get_video(filename: str):
+    return f"/src/web_app/videos/{filename}.mp4"
 
 
 @app.get("/session", response_class=HTMLResponse)
