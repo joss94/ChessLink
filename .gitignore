@@ -170,6 +170,8 @@ data/
 *.pt
 *.onnx
 
+*.onnx
+
 #Trainings
 runs/
 src/runs/
