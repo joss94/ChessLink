@@ -174,5 +174,6 @@ data/
 runs/
 wandb/
 
-# Blender backup
+# Blender
+*.blend
 *.blend1
