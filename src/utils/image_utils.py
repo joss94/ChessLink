@@ -37,8 +37,7 @@ def crop_board(img, corners):
     c_x = X + 0.5 * W
     c_y = Y + 0.5 * H
 
-    A = H if H > W else W
-    A *= 1.2
+    A = np.max([H, W]) * 1.2
 
     borders = np.array([0, 0, 0, 0], dtype=np.int32)
     borders[0] = max(0, 0.5 * A - c_y)
@@ -58,23 +57,30 @@ def crop_board(img, corners):
     c_y += borders[0]
     c_x += borders[2]
 
-    cropped = bordered[
-        int(c_y - 0.5 * A) : int(c_y + 0.5 * A), int(c_x - 0.5 * A) : int(c_x + 0.5 * A)
+    crop_margins = [
+        int(c_y - 0.5 * A),
+        int(c_y + 0.5 * A),
+        int(c_x - 0.5 * A),
+        int(c_x + 0.5 * A)
     ]
 
-    X -= 0.1 * W
-    Y -= 0.1 * H
-    W *= 1.2
-    H *= 1.2
-    X = max(0, X)
-    Y = max(0, Y)
-    W = min(W, w - X - 1)
-    H = min(H, h - Y - 1)
+    cropped = bordered[
+        crop_margins[0] : crop_margins[1], crop_margins[2] : crop_margins[3]
+    ]
 
-    cropped = img[int(Y) : int(Y + H), int(X) : int(X + W)]
-    out, borders = make_square_image(cropped)
+    # X -= 0.1 * W
+    # Y -= 0.1 * H
+    # W *= 1.2
+    # H *= 1.2
+    # X = max(0, X)
+    # Y = max(0, Y)
+    # W = min(W, w - X - 1)
+    # H = min(H, h - Y - 1)
 
-    return out, [X - borders[2], Y - borders[0], out.shape[1], out.shape[0]]
+    # cropped = img[int(Y) : int(Y + H), int(X) : int(X + W)]
+    # out, borders = make_square_image(cropped)
+
+    return cropped, [crop_margins[2] - borders[2], crop_margins[0] - borders[0], cropped.shape[1], cropped.shape[0]]
 
 
 def draw_detections_on_image(image, pieces):
