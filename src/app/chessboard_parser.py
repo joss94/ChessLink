@@ -11,8 +11,8 @@ from networks.detection.YOLO_det_onnx import YOLOv8ONNX, YOLOv8SegONNX
 from ultralytics import YOLO
 from utils.image_utils import make_square_image, crop_board
 
-DETECT_WEIGHTS = str(Path("../src/model/detection/real_mix22.onnx"))
-SEGMENT_WEIGHTS = str(Path("./model/segment/weights.pt"))
+DETECT_WEIGHTS = str(Path("../src/model/detection/weights.onnx"))
+SEGMENT_WEIGHTS = str(Path("./model/segment/weights.onnx"))
 HANDS_WEIGHTS = str(Path("./model/yolov8n-seg.pt"))
 
 CONF = 0.5
